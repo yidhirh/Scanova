@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'screens/ocr_screen.dart';
+import 'screens/login_screen.dart';
 
 void main() {
   runApp(const ScanovaApp());
@@ -13,7 +13,7 @@ class ScanovaApp extends StatelessWidget {
     return MaterialApp(
       title: 'Scanova',
       debugShowCheckedModeBanner: false,
-      home: const OcrScreen(),
+      home: const LoginScreen(),
     );
   }
 }

@@ -21,31 +21,50 @@ class _OcrScreenState extends State<OcrScreen> {
   bool _isLoading = false;
 
   Future<void> _pickImage(ImageSource source) async {
-    final XFile? image = await _picker.pickImage(
-      source: source,
-      imageQuality: 100,
-      maxWidth: 2600,
-      maxHeight: 3200,
-    );
+    try {
+      final XFile? image = await _picker.pickImage(
+        source: source,
+        imageQuality: 100,
+        maxWidth: 2000,
+        maxHeight: 2500,
+      );
 
-    if (image == null) return;
+      if (image == null) return;
 
-    setState(() {
-      _selectedImage = File(image.path);
-      _isLoading = true;
-      _extractedText = '';
-    });
+      setState(() {
+        _selectedImage = File(image.path);
+        _isLoading = true;
+        _extractedText = '';
+      });
 
-    final text = await _ocrService.extractTextFromImage(image.path);
+      // Ici on utilise la méthode hybride :
+      // ML Kit d'abord, puis Cloud si ML Kit est insuffisant.
+      final text = await _ocrService.extractTextFromImage(image.path);
 
-    if (!mounted) return;
+      if (!mounted) return;
 
-    setState(() {
-      _isLoading = false;
-      _extractedText = text.isEmpty
-          ? 'Impossible d’extraire le texte. Veuillez réessayer avec une image plus claire.'
-          : text;
-    });
+      setState(() {
+        _isLoading = false;
+        _extractedText = text.isEmpty
+            ? 'Impossible d’extraire le texte. Veuillez réessayer avec une image plus claire.'
+            : text;
+      });
+    } catch (e) {
+      if (!mounted) return;
+
+      setState(() {
+        _isLoading = false;
+        _extractedText = 'Une erreur est survenue pendant l’extraction.';
+      });
+
+      print('OCR SCREEN ERROR: $e');
+    }
+  }
+
+  @override
+  void dispose() {
+    _ocrService.dispose();
+    super.dispose();
   }
 
   @override
@@ -74,6 +93,7 @@ class _OcrScreenState extends State<OcrScreen> {
               ),
             ),
             const SizedBox(height: 16),
+
             Row(
               children: [
                 Expanded(
@@ -97,7 +117,9 @@ class _OcrScreenState extends State<OcrScreen> {
                 ),
               ],
             ),
+
             const SizedBox(height: 16),
+
             if (_isLoading)
               const CircularProgressIndicator()
             else
