@@ -23,9 +23,9 @@ class _OcrScreenState extends State<OcrScreen> {
   Future<void> _pickImage(ImageSource source) async {
     final XFile? image = await _picker.pickImage(
       source: source,
-      imageQuality: source == ImageSource.camera ? 100 : 85,
-      maxWidth: source == ImageSource.camera ? 2000 : 1200,
-      maxHeight: source == ImageSource.camera ? 2500 : 1600,
+      imageQuality: 100,
+      maxWidth: 2600,
+      maxHeight: 3200,
     );
 
     if (image == null) return;
