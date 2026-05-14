@@ -40,16 +40,11 @@ class _LoginScreenState extends State<LoginScreen> {
     );
 
     final bool isFormValid =
-        email.isNotEmpty &&
-            password.isNotEmpty &&
-            emailRegex.hasMatch(email) &&
-            password.length >= 6;
+        email.isNotEmpty && password.isNotEmpty && emailRegex.hasMatch(email) && password.length >= 6;
 
     if (!mounted) return;
 
-    setState(() {
-      _isLoading = false;
-    });
+    setState(() { _isLoading = false; });
 
     if (!isFormValid) {
       ScaffoldMessenger.of(context).showSnackBar(

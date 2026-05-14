@@ -7,19 +7,15 @@ class OcrService {
 
   Future<String> extractTextFromImage(String imagePath) async {
     try {
-      print('OCR START ML KIT');
-      print('IMAGE PATH: $imagePath');
+      final inputImage = InputImage.fromFilePath(imagePath); //importation de l'image
 
-      final inputImage = InputImage.fromFilePath(imagePath);
+      final RecognizedText recognizedText = await _textRecognizer.processImage(inputImage); //appel de l'OCR
 
-      final RecognizedText recognizedText =
-      await _textRecognizer.processImage(inputImage);
-
-      print('ML KIT RESULT: ${recognizedText.text}');
+      print('ML KIT RESULT: ${recognizedText.text}'); //affichage du texte extrait
 
       return recognizedText.text.trim();
     } catch (e) {
-      print('ML KIT OCR ERROR: $e');
+      print('ML KIT OCR ERROR: $e'); ///gestion d'erreur pour l'OCR
       return '';
     }
   }

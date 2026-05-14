@@ -13,8 +13,8 @@ class OcrScreen extends StatefulWidget {
 }
 
 class _OcrScreenState extends State<OcrScreen> {
-  final ImagePicker _picker = ImagePicker();
-  final OcrService _ocrService = OcrService();
+  final ImagePicker _picker = ImagePicker(); //importer des images depuis la galerie ou la caméra
+  final OcrService _ocrService = OcrService(); //OCR
 
   File? _selectedImage;
   String _extractedText = '';
