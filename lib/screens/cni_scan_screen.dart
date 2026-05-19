@@ -241,6 +241,7 @@ class _CniScanScreenState extends State<CniScanScreen> {
   }
 
   @override
+  @override
   Widget build(BuildContext context) {
     final bool hasNoImages = _rectoImage == null && _versoImage == null;
     final bool hasBothImages = _rectoImage != null && _versoImage != null;
@@ -262,10 +263,14 @@ class _CniScanScreenState extends State<CniScanScreen> {
             children: [
               _buildHeader(),
 
+              // CHANGEMENT : Expanded contient maintenant un SingleChildScrollView
+              // pour que le contenu puisse défiler quand l'écran est trop petit.
               Expanded(
-                child: Padding(
+                child: SingleChildScrollView(
                   padding: const EdgeInsets.all(16),
-                  child: hasNoImages ? _buildInitialState() : _buildCapturedImages(),
+                  child: hasNoImages
+                      ? _buildInitialState()
+                      : _buildCapturedImages(),
                 ),
               ),
 
@@ -343,90 +348,88 @@ class _CniScanScreenState extends State<CniScanScreen> {
   }
 
   Widget _buildInitialState() {
-    return Center(
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(22),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(22),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.06),
-              blurRadius: 18,
-              offset: const Offset(0, 8),
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(22),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(22),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.06),
+            blurRadius: 18,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 96,
+            height: 96,
+            decoration: BoxDecoration(
+              color: _primaryColor.withValues(alpha: 0.10),
+              shape: BoxShape.circle,
             ),
-          ],
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 96,
-              height: 96,
-              decoration: BoxDecoration(
-                color: _primaryColor.withValues(alpha: 0.10),
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(
-                Icons.document_scanner_outlined,
-                color: _primaryColor,
-                size: 52,
-              ),
+            child: const Icon(
+              Icons.document_scanner_outlined,
+              color: _primaryColor,
+              size: 52,
             ),
+          ),
 
-            const SizedBox(height: 22),
+          const SizedBox(height: 22),
 
-            const Text(
-              'Capture automatique recto / verso',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: _textColor,
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-              ),
+          const Text(
+            'Capture automatique recto / verso',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: _textColor,
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
             ),
+          ),
 
-            const SizedBox(height: 10),
+          const SizedBox(height: 10),
 
-            Text(
-              'L’application va capturer le recto, afficher une petite miniature, puis ouvrir directement la caméra pour le verso.',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 14,
-                color: Colors.grey[700],
-                height: 1.4,
-              ),
+          Text(
+            'L’application va capturer le recto, afficher une petite miniature, puis ouvrir directement la caméra pour le verso.',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 14,
+              color: Colors.grey[700],
+              height: 1.4,
             ),
+          ),
 
-            const SizedBox(height: 24),
+          const SizedBox(height: 24),
 
-            _buildStep(
-              number: '1',
-              title: 'Photo du recto',
-              subtitle: 'La première face est enregistrée temporairement.',
-              icon: Icons.looks_one,
-            ),
+          _buildStep(
+            number: '1',
+            title: 'Photo du recto',
+            subtitle: 'La première face est enregistrée temporairement.',
+            icon: Icons.looks_one,
+          ),
 
-            const SizedBox(height: 14),
+          const SizedBox(height: 14),
 
-            _buildStep(
-              number: '2',
-              title: 'Photo du verso',
-              subtitle: 'La caméra se rouvre directement pour la deuxième face.',
-              icon: Icons.looks_two,
-            ),
+          _buildStep(
+            number: '2',
+            title: 'Photo du verso',
+            subtitle: 'La caméra se rouvre directement pour la deuxième face.',
+            icon: Icons.looks_two,
+          ),
 
-            const SizedBox(height: 14),
+          const SizedBox(height: 14),
 
-            _buildStep(
-              number: '3',
-              title: 'Extraction automatique',
-              subtitle: 'L’OCR se lance après la capture du verso.',
-              icon: Icons.auto_fix_high,
-            ),
-          ],
-        ),
+          _buildStep(
+            number: '3',
+            title: 'Extraction automatique',
+            subtitle: 'L’OCR se lance après la capture du verso.',
+            icon: Icons.auto_fix_high,
+          ),
+        ],
       ),
     );
   }
@@ -508,7 +511,9 @@ class _CniScanScreenState extends State<CniScanScreen> {
   Widget _buildCapturedImages() {
     return Column(
       children: [
-        Expanded(
+        SizedBox(
+          // Hauteur fixe pour les cartes d'images, lisible sur tous les écrans.
+          height: 360,
           child: Row(
             children: [
               Expanded(

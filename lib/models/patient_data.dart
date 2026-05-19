@@ -1,3 +1,5 @@
+import 'document_type.dart';
+
 class PatientData {
   final String nom;
   final String prenom;
@@ -5,6 +7,7 @@ class PatientData {
   final String numeroDocument;
   final String groupeSanguin;
   final String texteBrut;
+  final DocumentType? sourceType;
 
   final Set<String> champsAVerifier;
 
@@ -15,6 +18,7 @@ class PatientData {
     required this.numeroDocument,
     this.groupeSanguin = '',
     required this.texteBrut,
+    this.sourceType,
     this.champsAVerifier = const {},
   });
 
@@ -29,6 +33,7 @@ class PatientData {
     String? numeroDocument,
     String? groupeSanguin,
     String? texteBrut,
+    DocumentType? sourceType,
     Set<String>? champsAVerifier,
   }) {
     return PatientData(
@@ -38,6 +43,7 @@ class PatientData {
       numeroDocument: numeroDocument ?? this.numeroDocument,
       groupeSanguin: groupeSanguin ?? this.groupeSanguin,
       texteBrut: texteBrut ?? this.texteBrut,
+      sourceType: sourceType ?? this.sourceType,
       champsAVerifier: champsAVerifier ?? this.champsAVerifier,
     );
   }
@@ -51,6 +57,7 @@ PatientData(
   dateNaissance: $dateNaissance,
   numeroDocument: $numeroDocument,
   groupeSanguin: $groupeSanguin,
+  sourceType: $sourceType,
   champsAVerifier: $champsAVerifier
 )
 ''';

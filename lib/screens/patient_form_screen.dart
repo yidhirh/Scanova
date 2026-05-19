@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../models/document_type.dart';
 import '../models/patient_data.dart';
 
 class PatientFormScreen extends StatefulWidget {
@@ -44,8 +45,16 @@ class _PatientFormScreenState extends State<PatientFormScreen> {
     _dateNaissanceController.dispose();
     _numeroDocumentController.dispose();
     _groupeSanguinController.dispose();
-
     super.dispose();
+  }
+
+  bool get _isChifa => widget.initialData.sourceType == DocumentType.chifa;
+  bool get _isCni => widget.initialData.sourceType == DocumentType.cni;
+
+  String get _numeroDocumentLabel {
+    if (_isChifa) return 'Numéro de sécurité sociale';
+    if (_isCni) return 'Numéro CNI';
+    return 'Numéro document';
   }
 
   void _confirm() {
@@ -56,10 +65,9 @@ class _PatientFormScreenState extends State<PatientFormScreen> {
       prenom: _prenomController.text.trim(),
       dateNaissance: _dateNaissanceController.text.trim(),
       numeroDocument: _numeroDocumentController.text.trim(),
-      groupeSanguin: _groupeSanguinController.text.trim(),
-      // On garde le texte brut en interne pour debug/enregistrement si besoin,
-      // mais on ne l'affiche plus dans le formulaire des cartes.
+      groupeSanguin: _isChifa ? '' : _groupeSanguinController.text.trim(),
       texteBrut: widget.initialData.texteBrut,
+      sourceType: widget.initialData.sourceType,
       champsAVerifier: const {},
     );
 
@@ -74,13 +82,9 @@ class _PatientFormScreenState extends State<PatientFormScreen> {
     if (!widget.initialData.doitVerifier(fieldName)) {
       return const SizedBox.shrink();
     }
-
     return const Tooltip(
       message: 'À vérifier',
-      child: Icon(
-        Icons.warning_amber_rounded,
-        color: Colors.amber,
-      ),
+      child: Icon(Icons.warning_amber_rounded, color: Colors.amber),
     );
   }
 
@@ -123,19 +127,13 @@ class _PatientFormScreenState extends State<PatientFormScreen> {
 
   String? _dateValidator(String? value) {
     final input = value?.trim() ?? '';
-
-    if (input.isEmpty) {
-      return 'Champ obligatoire';
-    }
+    if (input.isEmpty) return 'Champ obligatoire';
 
     final isValid = RegExp(
       r'^(0[1-9]|[12][0-9]|3[01])\/(0[1-9]|1[0-2])\/((19|20)\d{2})$',
     ).hasMatch(input);
 
-    if (!isValid) {
-      return 'Format attendu : JJ/MM/AAAA';
-    }
-
+    if (!isValid) return 'Format attendu : JJ/MM/AAAA';
     return null;
   }
 
@@ -144,9 +142,7 @@ class _PatientFormScreenState extends State<PatientFormScreen> {
     final hasWarnings = widget.initialData.champsAVerifier.isNotEmpty;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Vérification des données'),
-      ),
+      appBar: AppBar(title: const Text('Vérification des données')),
       body: Form(
         key: _formKey,
         child: ListView(
@@ -167,7 +163,7 @@ class _PatientFormScreenState extends State<PatientFormScreen> {
                     SizedBox(width: 10),
                     Expanded(
                       child: Text(
-                        'Certains champs n’ont pas été détectés avec certitude. Vérifiez-les avant de confirmer.',
+                        "Certains champs n’ont pas été détectés avec certitude. Vérifiez-les avant de confirmer.",
                       ),
                     ),
                   ],
@@ -194,15 +190,18 @@ class _PatientFormScreenState extends State<PatientFormScreen> {
               keyboardType: TextInputType.datetime,
               validator: _dateValidator,
             ),
+            // Groupe sanguin uniquement pour la CNI
+            if (!_isChifa) ...[
+              const SizedBox(height: 14),
+              _buildTextField(
+                label: 'Groupe sanguin',
+                fieldName: 'groupeSanguin',
+                controller: _groupeSanguinController,
+              ),
+            ],
             const SizedBox(height: 14),
             _buildTextField(
-              label: 'Groupe sanguin',
-              fieldName: 'groupeSanguin',
-              controller: _groupeSanguinController,
-            ),
-            const SizedBox(height: 14),
-            _buildTextField(
-              label: 'Numéro document',
+              label: _numeroDocumentLabel,
               fieldName: 'numeroDocument',
               controller: _numeroDocumentController,
               keyboardType: TextInputType.number,

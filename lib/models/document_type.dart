@@ -16,7 +16,7 @@ extension DocumentTypeExtension on DocumentType {
   String get description {
     switch (this) {
       case DocumentType.cni:
-        return 'Carte Nationale d’Identité algérienne';
+        return "Carte Nationale d’Identité algérienne";
       case DocumentType.chifa:
         return 'Carte Chifa / assurance sociale';
     }
