@@ -1,3 +1,6 @@
+import 'dart:io';
+
+import 'package:flutter/foundation.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 
 class OcrService {
@@ -7,17 +10,31 @@ class OcrService {
 
   Future<String> extractTextFromImage(String imagePath) async {
     try {
-      final inputImage = InputImage.fromFilePath(imagePath); //importation de l'image
+      final InputImage inputImage = InputImage.fromFilePath(imagePath);
 
-      final RecognizedText recognizedText = await _textRecognizer.processImage(inputImage); //appel de l'OCR
+      final RecognizedText recognizedText =
+      await _textRecognizer.processImage(inputImage);
 
-      print('ML KIT RESULT: ${recognizedText.text}'); //affichage du texte extrait
+      debugPrint('ML KIT RESULT: ${recognizedText.text}');
 
       return recognizedText.text.trim();
     } catch (e) {
-      print('ML KIT OCR ERROR: $e'); ///gestion d'erreur pour l'OCR
+      debugPrint('ML KIT OCR ERROR: $e');
       return '';
     }
+  }
+
+  Future<Map<String, String>> scanBothSides(
+      File rectoImage,
+      File versoImage,
+      ) async {
+    final String rectoText = await extractTextFromImage(rectoImage.path);
+    final String versoText = await extractTextFromImage(versoImage.path);
+
+    return {
+      'recto': rectoText,
+      'verso': versoText,
+    };
   }
 
   void dispose() {

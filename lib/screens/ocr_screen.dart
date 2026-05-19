@@ -13,8 +13,8 @@ class OcrScreen extends StatefulWidget {
 }
 
 class _OcrScreenState extends State<OcrScreen> {
-  final ImagePicker _picker = ImagePicker(); //importer des images depuis la galerie ou la caméra
-  final OcrService _ocrService = OcrService(); //OCR
+  final ImagePicker _picker = ImagePicker(); // importer des images depuis la galerie ou la caméra
+  final OcrService _ocrService = OcrService(); // OCR principal : ML Kit hors ligne
 
   File? _selectedImage;
   String _extractedText = '';
@@ -37,8 +37,7 @@ class _OcrScreenState extends State<OcrScreen> {
         _extractedText = '';
       });
 
-      // Ici on utilise la méthode hybride :
-      // ML Kit d'abord, puis Cloud si ML Kit est insuffisant.
+      // OCR général : on garde seulement ML Kit pour les documents médicaux classiques.
       final text = await _ocrService.extractTextFromImage(image.path);
 
       if (!mounted) return;
@@ -57,7 +56,7 @@ class _OcrScreenState extends State<OcrScreen> {
         _extractedText = 'Une erreur est survenue pendant l’extraction.';
       });
 
-      print('OCR SCREEN ERROR: $e');
+      debugPrint('OCR SCREEN ERROR: $e');
     }
   }
 
@@ -88,12 +87,11 @@ class _OcrScreenState extends State<OcrScreen> {
               child: _selectedImage == null
                   ? const Text('Aucune image sélectionnée')
                   : Image.file(
-                _selectedImage!,
-                fit: BoxFit.contain,
-              ),
+                      _selectedImage!,
+                      fit: BoxFit.contain,
+                    ),
             ),
             const SizedBox(height: 16),
-
             Row(
               children: [
                 Expanded(
@@ -117,9 +115,7 @@ class _OcrScreenState extends State<OcrScreen> {
                 ),
               ],
             ),
-
             const SizedBox(height: 16),
-
             if (_isLoading)
               const CircularProgressIndicator()
             else

@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+
+import 'document_type_selection_screen.dart';
 import 'ocr_screen.dart';
 
 class HomeScreen extends StatelessWidget {
@@ -9,6 +11,15 @@ class HomeScreen extends StatelessWidget {
       context,
       MaterialPageRoute(
         builder: (context) => const OcrScreen(),
+      ),
+    );
+  }
+
+  void _goToCardScanner(BuildContext context) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => const DocumentTypeSelectionScreen(),
       ),
     );
   }
@@ -34,9 +45,7 @@ class HomeScreen extends StatelessWidget {
                 size: 72,
                 color: Color(0xFF2563EB),
               ),
-
               const SizedBox(height: 24),
-
               const Text(
                 'Bienvenue sur Scanova',
                 textAlign: TextAlign.center,
@@ -46,28 +55,24 @@ class HomeScreen extends StatelessWidget {
                   color: Color(0xFF0F172A),
                 ),
               ),
-
               const SizedBox(height: 12),
-
               const Text(
-                'Commencez une première démonstration OCR en scannant un document médical.',
+                'Choisissez un scan OCR simple ou le scan intelligent des cartes CNI / Chifa.',
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   fontSize: 15,
                   color: Color(0xFF64748B),
                 ),
               ),
-
               const SizedBox(height: 32),
-
               SizedBox(
                 width: double.infinity,
                 height: 52,
                 child: ElevatedButton.icon(
                   onPressed: () => _goToOcrScreen(context),
-                  icon: const Icon(Icons.camera_alt_outlined),
+                  icon: const Icon(Icons.description_outlined),
                   label: const Text(
-                    'Scanner un document',
+                    'OCR simple document médical',
                     style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w700,
@@ -77,6 +82,32 @@ class HomeScreen extends StatelessWidget {
                     backgroundColor: const Color(0xFF2563EB),
                     foregroundColor: Colors.white,
                     elevation: 0,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 14),
+              SizedBox(
+                width: double.infinity,
+                height: 52,
+                child: OutlinedButton.icon(
+                  onPressed: () => _goToCardScanner(context),
+                  icon: const Icon(Icons.credit_card),
+                  label: const Text(
+                    'Scanner CNI / Carte Chifa',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: const Color(0xFF2563EB),
+                    side: const BorderSide(
+                      color: Color(0xFF2563EB),
+                      width: 1.4,
+                    ),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
                     ),

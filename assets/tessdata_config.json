@@ -1,6 +1,7 @@
 {
   "files": [
-    "eng.traineddata",
-    "fra.traineddata"
+    "ara.traineddata",
+    "fra.traineddata",
+    "eng.traineddata"
   ]
 }
