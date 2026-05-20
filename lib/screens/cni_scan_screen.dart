@@ -1,4 +1,4 @@
-import 'dart:io';
+﻿import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
@@ -16,8 +16,8 @@ class CniScanScreen extends StatefulWidget {
 }
 
 class _CniScanScreenState extends State<CniScanScreen> {
-  static const Color _primaryColor = Color(0xFF0F766E);
-  static const Color _backgroundColor = Color(0xFFF5F7FA);
+  static const Color _primaryColor = Color(0xFF2563EB);
+  static const Color _backgroundColor = Color(0xFFFDF6FD);
   static const Color _textColor = Color(0xFF0F172A);
 
   File? _rectoImage;
@@ -45,6 +45,87 @@ class _CniScanScreenState extends State<CniScanScreen> {
       maxHeight: 2200,
       preferredCameraDevice: CameraDevice.rear,
     );
+  }
+
+  Future<XFile?> _pickFromGallery() async {
+    return await _picker.pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 90,
+      maxWidth: 2200,
+      maxHeight: 2200,
+    );
+  }
+
+  Future<void> _pickGallerySequential() async {
+    if (_isCapturing || _isProcessing) return;
+
+    setState(() {
+      _isCapturing = true;
+      _isProcessing = false;
+      _rectoImage = null;
+      _versoImage = null;
+      _currentStep = 'Sélection du recto...';
+    });
+
+    try {
+      final XFile? rectoPhoto = await _pickFromGallery();
+
+      if (rectoPhoto == null) {
+        if (!mounted) return;
+        setState(() {
+          _isCapturing = false;
+          _currentStep = 'Sélection annulée';
+        });
+        return;
+      }
+
+      if (!mounted) return;
+
+      setState(() {
+        _rectoImage = File(rectoPhoto.path);
+        _currentStep = 'Recto sélectionné. Choisissez le verso...';
+      });
+
+      _showSuccessMessage('Recto sélectionné');
+
+      await Future.delayed(const Duration(milliseconds: 600));
+
+      if (!mounted) return;
+
+      setState(() => _currentStep = 'Sélection du verso...');
+
+      final XFile? versoPhoto = await _pickFromGallery();
+
+      if (versoPhoto == null) {
+        if (!mounted) return;
+        setState(() {
+          _isCapturing = false;
+          _currentStep = 'Verso annulé. Veuillez recommencer.';
+        });
+        _showErrorDialog(
+          'Sélection du verso annulée. Veuillez recommencer pour choisir les deux faces.',
+        );
+        return;
+      }
+
+      if (!mounted) return;
+
+      setState(() {
+        _versoImage = File(versoPhoto.path);
+        _isCapturing = false;
+        _currentStep = 'Deux faces sélectionnées. Prêt pour l\'extraction.';
+      });
+
+      _showSuccessMessage('Verso sélectionné');
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _isCapturing = false;
+        _isProcessing = false;
+        _currentStep = 'Erreur pendant la sélection';
+      });
+      _showErrorDialog('Erreur lors de la sélection : $e');
+    }
   }
 
   Future<void> _captureSequentialImages() async {
@@ -108,16 +189,10 @@ class _CniScanScreenState extends State<CniScanScreen> {
       setState(() {
         _versoImage = File(versoPhoto.path);
         _isCapturing = false;
-        _currentStep = 'Deux faces capturées. Extraction en cours...';
+        _currentStep = 'Deux faces capturées. Prêt pour l\'extraction.';
       });
 
       _showSuccessMessage('Verso enregistré');
-
-      await Future.delayed(const Duration(milliseconds: 400));
-
-      if (!mounted) return;
-
-      await _extractInformation();
     } catch (e) {
       if (!mounted) return;
 
@@ -175,7 +250,7 @@ class _CniScanScreenState extends State<CniScanScreen> {
 
       if (!hasAnyData) {
         _showErrorDialog(
-          'Aucune information n’a pu être extraite. Veuillez reprendre les photos avec une meilleure lumière.',
+          "Aucune information n'a pu être extraite. Veuillez reprendre les photos avec une meilleure lumière.",
         );
         return;
       }
@@ -191,10 +266,10 @@ class _CniScanScreenState extends State<CniScanScreen> {
 
       setState(() {
         _isProcessing = false;
-        _currentStep = 'Erreur pendant l’extraction';
+        _currentStep = "Erreur pendant l'extraction";
       });
 
-      _showErrorDialog('Erreur lors de l’extraction : $e');
+      _showErrorDialog("Erreur lors de l'extraction : $e");
     }
   }
 
@@ -394,7 +469,7 @@ class _CniScanScreenState extends State<CniScanScreen> {
           const SizedBox(height: 10),
 
           Text(
-            'L’application va capturer le recto, afficher une petite miniature, puis ouvrir directement la caméra pour le verso.',
+            "L'application va capturer le recto, afficher une petite miniature, puis ouvrir directement la caméra pour le verso.",
             textAlign: TextAlign.center,
             style: TextStyle(
               fontSize: 14,
@@ -409,7 +484,7 @@ class _CniScanScreenState extends State<CniScanScreen> {
             number: '1',
             title: 'Photo du recto',
             subtitle: 'La première face est enregistrée temporairement.',
-            icon: Icons.looks_one,
+            icon: Icons.crop_portrait,
           ),
 
           const SizedBox(height: 14),
@@ -418,16 +493,16 @@ class _CniScanScreenState extends State<CniScanScreen> {
             number: '2',
             title: 'Photo du verso',
             subtitle: 'La caméra se rouvre directement pour la deuxième face.',
-            icon: Icons.looks_two,
+            icon: Icons.flip,
           ),
 
           const SizedBox(height: 14),
 
           _buildStep(
             number: '3',
-            title: 'Extraction automatique',
-            subtitle: 'L’OCR se lance après la capture du verso.',
-            icon: Icons.auto_fix_high,
+            title: 'Lancer l\'extraction',
+            subtitle: "Appuyez sur \"Extraire\" pour démarrer l'analyse OCR.",
+            icon: Icons.auto_awesome,
           ),
         ],
       ),
@@ -512,28 +587,22 @@ class _CniScanScreenState extends State<CniScanScreen> {
     return Column(
       children: [
         SizedBox(
-          // Hauteur fixe pour les cartes d'images, lisible sur tous les écrans.
-          height: 360,
-          child: Row(
-            children: [
-              Expanded(
-                child: _buildImageCard(
-                  title: 'Recto',
-                  image: _rectoImage,
-                  icon: Icons.credit_card,
-                ),
-              ),
+          height: 200,
+          child: _buildImageCard(
+            title: 'Recto',
+            image: _rectoImage,
+            icon: Icons.credit_card,
+          ),
+        ),
 
-              const SizedBox(width: 14),
+        const SizedBox(height: 14),
 
-              Expanded(
-                child: _buildImageCard(
-                  title: 'Verso',
-                  image: _versoImage,
-                  icon: Icons.flip_to_back,
-                ),
-              ),
-            ],
+        SizedBox(
+          height: 200,
+          child: _buildImageCard(
+            title: 'Verso',
+            image: _versoImage,
+            icon: Icons.flip_to_back,
           ),
         ),
 
@@ -724,36 +793,56 @@ class _CniScanScreenState extends State<CniScanScreen> {
 
   Widget _buildBottomActions(bool hasNoImages, bool hasBothImages) {
     if (hasNoImages) {
-      return SizedBox(
-        width: double.infinity,
-        child: ElevatedButton.icon(
-          onPressed: _isCapturing || _isProcessing ? null : _captureSequentialImages,
-          icon: _isCapturing
-              ? const SizedBox(
-            width: 22,
-            height: 22,
-            child: CircularProgressIndicator(
-              strokeWidth: 2,
-              color: Colors.white,
-            ),
-          )
-              : const Icon(Icons.camera_alt),
-          label: Text(
-            _isCapturing ? 'Capture en cours...' : 'Capturer recto + verso',
-            style: const TextStyle(
-              fontSize: 17,
-              fontWeight: FontWeight.bold,
+      final bool busy = _isCapturing || _isProcessing;
+      return Row(
+        children: [
+          Expanded(
+            child: ElevatedButton.icon(
+              onPressed: busy ? null : _captureSequentialImages,
+              icon: busy
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Icon(Icons.camera_alt),
+              label: const Text(
+                'Caméra',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: _primaryColor,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 18),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+              ),
             ),
           ),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: _primaryColor,
-            foregroundColor: Colors.white,
-            padding: const EdgeInsets.symmetric(vertical: 18),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
+          const SizedBox(width: 12),
+          Expanded(
+            child: ElevatedButton.icon(
+              onPressed: busy ? null : _pickGallerySequential,
+              icon: const Icon(Icons.photo_library),
+              label: const Text(
+                'Galerie',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: _primaryColor,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 18),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+              ),
             ),
           ),
-        ),
+        ],
       );
     }
 
@@ -813,8 +902,8 @@ class _CniScanScreenState extends State<CniScanScreen> {
             icon: const Icon(Icons.refresh),
             label: const Text('Reprendre'),
             style: OutlinedButton.styleFrom(
-              foregroundColor: Colors.orange,
-              side: const BorderSide(color: Colors.orange),
+              foregroundColor: _primaryColor,
+              side: const BorderSide(color: _primaryColor),
               padding: const EdgeInsets.symmetric(vertical: 17),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(16),
