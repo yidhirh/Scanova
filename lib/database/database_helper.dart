@@ -1,5 +1,6 @@
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
+import '../models/patient.dart';
 
 class DatabaseHelper {
   static const _databaseName = 'scanova.db';
@@ -86,5 +87,72 @@ class DatabaseHelper {
         UPDATE patients SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
       END
     ''');
+  }
+
+  /// Insère un nouveau patient dans la base et retourne l'id généré par SQLite.
+  /// La détection de doublon doit être faite EN AMONT via [findPatientByIdentity].
+  Future<int> insertPatient(Patient patient) async {
+    final db = await database;
+    final id = await db.insert('patients', patient.toMap());
+    print('[DB] insertPatient → id=$id (${patient.nom} ${patient.prenom})');
+    return id;
+  }
+
+  /// Recherche un patient par matching strict (nom + prénom + date de naissance).
+  /// Retourne `null` si aucun patient ne correspond. Utilisé pour la détection
+  /// de doublon avant un [insertPatient].
+  Future<Patient?> findPatientByIdentity({
+    required String nom,
+    required String prenom,
+    required String dateNaissance,
+  }) async {
+    final db = await database;
+    final rows = await db.query(
+      'patients',
+      where: 'nom = ? AND prenom = ? AND date_naissance = ?',
+      whereArgs: [nom, prenom, dateNaissance],
+      limit: 1,
+    );
+    if (rows.isEmpty) return null;
+    return Patient.fromMap(rows.first);
+  }
+
+  /// Retourne tous les patients, triés par date de création décroissante
+  /// (les plus récents en premier). Pour l'écran liste des patients.
+  Future<List<Patient>> getAllPatients() async {
+    final db = await database;
+    final rows = await db.query(
+      'patients',
+      orderBy: 'created_at DESC',
+    );
+    return rows.map((r) => Patient.fromMap(r)).toList();
+  }
+
+  /// Retourne le patient correspondant à [id], ou `null` s'il n'existe pas.
+  /// Sert à ouvrir le dossier d'un patient.
+  Future<Patient?> getPatientById(int id) async {
+    final db = await database;
+    final rows = await db.query(
+      'patients',
+      where: 'id = ?',
+      whereArgs: [id],
+      limit: 1,
+    );
+    if (rows.isEmpty) return null;
+    return Patient.fromMap(rows.first);
+  }
+
+  /// Recherche partielle insensible à la casse sur nom OU prénom (LIKE %query%).
+  /// Résultats triés par nom alphabétique.
+  Future<List<Patient>> searchPatients(String query) async {
+    final db = await database;
+    final pattern = '%$query%';
+    final rows = await db.query(
+      'patients',
+      where: '(nom LIKE ? OR prenom LIKE ?) COLLATE NOCASE',
+      whereArgs: [pattern, pattern],
+      orderBy: 'nom COLLATE NOCASE ASC',
+    );
+    return rows.map((r) => Patient.fromMap(r)).toList();
   }
 }
