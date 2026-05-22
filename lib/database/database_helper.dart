@@ -1,6 +1,8 @@
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 import '../models/patient.dart';
+import '../models/card_scan.dart';
+import '../models/medical_document.dart';
 
 class DatabaseHelper {
   static const _databaseName = 'scanova.db';
@@ -154,5 +156,70 @@ class DatabaseHelper {
       orderBy: 'nom COLLATE NOCASE ASC',
     );
     return rows.map((r) => Patient.fromMap(r)).toList();
+  }
+
+  // ── card_scans ────────────────────────────────────────────────────────────
+
+  /// Insère un nouveau scan de carte (CNI ou CHIFA) et retourne l'id généré.
+  /// L'id du patient doit exister en base ; la FK est vérifiée par SQLite.
+  Future<int> insertCardScan(CardScan scan) async {
+    final db = await database;
+    final id = await db.insert('card_scans', scan.toMap());
+    print('[DB] insertCardScan → id=$id (patient_id=${scan.patientId}, type=${scan.typeCarte})');
+    return id;
+  }
+
+  /// Retourne tous les scans d'un patient, triés du plus récent au plus ancien.
+  Future<List<CardScan>> getScansByPatientId(int patientId) async {
+    final db = await database;
+    final rows = await db.query(
+      'card_scans',
+      where: 'patient_id = ?',
+      whereArgs: [patientId],
+      orderBy: 'scanned_at DESC',
+    );
+    return rows.map((r) => CardScan.fromMap(r)).toList();
+  }
+
+  // ── medical_documents ─────────────────────────────────────────────────────
+
+  /// Insère un nouveau document médical et retourne l'id généré.
+  /// L'id du patient doit exister en base ; la FK est vérifiée par SQLite.
+  Future<int> insertMedicalDocument(MedicalDocument doc) async {
+    final db = await database;
+    final id = await db.insert('medical_documents', doc.toMap());
+    print('[DB] insertMedicalDocument → id=$id (patient_id=${doc.patientId}, type=${doc.typeDocument})');
+    return id;
+  }
+
+  /// Retourne tous les documents d'un patient, triés par date décroissante.
+  /// Les documents sans date (document_date NULL) apparaissent en dernier.
+  Future<List<MedicalDocument>> getDocumentsByPatientId(int patientId) async {
+    final db = await database;
+    final rows = await db.query(
+      'medical_documents',
+      where: 'patient_id = ?',
+      whereArgs: [patientId],
+      // NULLS LAST n'est pas disponible avant SQLite 3.30 (Android < 12).
+      // IS NULL retourne 0 pour non-null (en tête) et 1 pour null (en fin).
+      orderBy: 'document_date IS NULL ASC, document_date DESC',
+    );
+    return rows.map((r) => MedicalDocument.fromMap(r)).toList();
+  }
+
+  /// Retourne les documents d'un patient filtrés par [typeDocument]
+  /// (ex. 'ordonnance', 'bilan', 'radio'). Même tri que [getDocumentsByPatientId].
+  Future<List<MedicalDocument>> getDocumentsByType(
+    int patientId,
+    String typeDocument,
+  ) async {
+    final db = await database;
+    final rows = await db.query(
+      'medical_documents',
+      where: 'patient_id = ? AND type_document = ?',
+      whereArgs: [patientId, typeDocument],
+      orderBy: 'document_date IS NULL ASC, document_date DESC',
+    );
+    return rows.map((r) => MedicalDocument.fromMap(r)).toList();
   }
 }

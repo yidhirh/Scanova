@@ -74,15 +74,19 @@ class _ChifaScanScreenState extends State<ChifaScanScreen> {
         _currentStep = 'Extraction terminee';
       });
 
-      final result = await Navigator.push<PatientData>(
+      final saved = await Navigator.push<bool>(
         context,
         MaterialPageRoute(
-          builder: (_) => PatientFormScreen(initialData: parsed),
+          builder: (_) => PatientFormScreen(
+            initialData: parsed,
+            imagePath: _image!.path,
+            ocrRawText: text,
+          ),
         ),
       );
 
-      if (result != null && mounted) {
-        Navigator.pop(context, result);
+      if (saved == true && mounted) {
+        Navigator.pop(context);
       }
     } catch (e) {
       if (!mounted) return;

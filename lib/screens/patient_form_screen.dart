@@ -1,14 +1,22 @@
 import 'package:flutter/material.dart';
 
+import '../database/database_helper.dart';
+import '../models/card_scan.dart';
 import '../models/document_type.dart';
+import '../models/patient.dart';
 import '../models/patient_data.dart';
+import 'patient_dossier_screen.dart';
 
 class PatientFormScreen extends StatefulWidget {
   final PatientData initialData;
+  final String imagePath;
+  final String? ocrRawText;
 
   const PatientFormScreen({
     super.key,
     required this.initialData,
+    required this.imagePath,
+    this.ocrRawText,
   });
 
   @override
@@ -48,6 +56,8 @@ class _PatientFormScreenState extends State<PatientFormScreen> {
     super.dispose();
   }
 
+  bool _isSaving = false;
+
   bool get _isChifa => widget.initialData.sourceType == DocumentType.chifa;
   bool get _isCni => widget.initialData.sourceType == DocumentType.cni;
 
@@ -57,21 +67,72 @@ class _PatientFormScreenState extends State<PatientFormScreen> {
     return 'Numéro document';
   }
 
-  void _confirm() {
+  /// Convertit une date DD/MM/YYYY (format formulaire) en YYYY-MM-DD (format ISO pour SQLite).
+  String _toIsoDate(String ddmmyyyy) {
+    final parts = ddmmyyyy.split('/');
+    return '${parts[2]}-${parts[1]}-${parts[0]}';
+  }
+
+  Future<void> _confirm() async {
     if (!_formKey.currentState!.validate()) return;
 
-    final finalData = PatientData(
-      nom: _nomController.text.trim(),
-      prenom: _prenomController.text.trim(),
-      dateNaissance: _dateNaissanceController.text.trim(),
-      numeroDocument: _numeroDocumentController.text.trim(),
-      groupeSanguin: _isChifa ? '' : _groupeSanguinController.text.trim(),
-      texteBrut: widget.initialData.texteBrut,
-      sourceType: widget.initialData.sourceType,
-      champsAVerifier: const {},
-    );
+    setState(() => _isSaving = true);
 
-    Navigator.pop(context, finalData);
+    try {
+      final nom = _nomController.text.trim();
+      final prenom = _prenomController.text.trim();
+      final dateIso = _toIsoDate(_dateNaissanceController.text.trim());
+      final numeroDocument = _numeroDocumentController.text.trim();
+      final groupeSanguin = _isChifa ? '' : _groupeSanguinController.text.trim();
+
+      final dao = DatabaseHelper.instance;
+
+      final existing = await dao.findPatientByIdentity(
+        nom: nom,
+        prenom: prenom,
+        dateNaissance: dateIso,
+      );
+
+      int patientId;
+      if (existing != null) {
+        patientId = existing.id!;
+      } else {
+        patientId = await dao.insertPatient(Patient(
+          nom: nom,
+          prenom: prenom,
+          dateNaissance: dateIso,
+          groupeSanguin: groupeSanguin.isNotEmpty ? groupeSanguin : null,
+          numeroCni: _isCni ? numeroDocument : null,
+          numeroSecuriteSociale: _isChifa ? numeroDocument : null,
+        ));
+      }
+
+      await dao.insertCardScan(CardScan(
+        patientId: patientId,
+        typeCarte: _isChifa ? 'CHIFA' : 'CNI',
+        imagePath: widget.imagePath,
+        ocrRawText: widget.ocrRawText,
+      ));
+
+      if (!mounted) return;
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (_) => PatientDossierScreen(patientId: patientId),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("Erreur lors de l'enregistrement : $e"),
+          backgroundColor: Colors.red,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
+    }
   }
 
   bool _containsArabic(String value) {
@@ -153,7 +214,7 @@ class _PatientFormScreenState extends State<PatientFormScreen> {
                 padding: const EdgeInsets.all(12),
                 margin: const EdgeInsets.only(bottom: 16),
                 decoration: BoxDecoration(
-                  color: Colors.amber.withOpacity(0.15),
+                  color: Colors.amber.withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(color: Colors.amber),
                 ),
@@ -209,9 +270,18 @@ class _PatientFormScreenState extends State<PatientFormScreen> {
             ),
             const SizedBox(height: 24),
             ElevatedButton.icon(
-              onPressed: _confirm,
-              icon: const Icon(Icons.check),
-              label: const Text('Confirmer'),
+              onPressed: _isSaving ? null : _confirm,
+              icon: _isSaving
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Icon(Icons.check),
+              label: Text(_isSaving ? 'Enregistrement...' : 'Confirmer'),
               style: ElevatedButton.styleFrom(
                 minimumSize: const Size.fromHeight(52),
               ),

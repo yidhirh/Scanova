@@ -258,7 +258,11 @@ class _CniScanScreenState extends State<CniScanScreen> {
       Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (context) => PatientFormScreen(initialData: patientData),
+          builder: (context) => PatientFormScreen(
+            initialData: patientData,
+            imagePath: _rectoImage!.path,
+            ocrRawText: '$rectoText\n$versoText',
+          ),
         ),
       );
     } catch (e) {

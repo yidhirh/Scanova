@@ -3,6 +3,8 @@ import 'package:sqflite/sqflite.dart';
 import 'screens/login_screen.dart';
 import 'database/database_helper.dart';
 import 'models/patient.dart';
+import 'models/card_scan.dart';
+import 'models/medical_document.dart';
 
 void main() async {
   // Nécessaire avant d'utiliser certains plugins natifs comme camera / ML Kit.
@@ -99,6 +101,67 @@ Future<void> _runSmokeTest() async {
   } else {
     print('TEST 6: getPatientById(1) → null');
   }
+
+  print('===== FIN SMOKE TEST patients =====');
+
+  // ── Tests card_scans & medical_documents ──────────────────────────────────
+
+  print('===== SMOKE TEST CRUD card_scans & medical_documents =====');
+
+  // TEST 7 : insertCardScan (idempotent : skip si scan déjà présent)
+  final existingScans = await dao.getScansByPatientId(patientId);
+  if (existingScans.isEmpty) {
+    final scanId = await dao.insertCardScan(CardScan(
+      patientId: patientId,
+      typeCarte: 'CNI',
+      imagePath: '/fake/path/cni.jpg',
+      ocrRawText: 'BENALI AHMED 15/03/1985',
+    ));
+    print('TEST 7: insertCardScan → id=$scanId ✓');
+  } else {
+    print('TEST 7: scan déjà présent, skip');
+  }
+
+  print('=====');
+
+  // TEST 8 : getScansByPatientId(1)
+  final scans = await dao.getScansByPatientId(patientId);
+  print('TEST 8: getScansByPatientId($patientId) → ${scans.length} scan(s)');
+  for (final s in scans) {
+    print('   - [${s.typeCarte}] scanned_at=${s.scannedAt}');
+  }
+
+  print('=====');
+
+  // TEST 9 : insertMedicalDocument (idempotent : skip si ordonnance déjà présente)
+  final existingOrdonnances = await dao.getDocumentsByType(patientId, 'ordonnance');
+  if (existingOrdonnances.isEmpty) {
+    final docId = await dao.insertMedicalDocument(MedicalDocument(
+      patientId: patientId,
+      typeDocument: 'ordonnance',
+      titre: 'Ordonnance test',
+      filePath: '/fake/path/ord.pdf',
+      documentDate: '2025-01-20',
+    ));
+    print('TEST 9: insertMedicalDocument → id=$docId ✓');
+  } else {
+    print('TEST 9: ordonnance déjà présente, skip');
+  }
+
+  print('=====');
+
+  // TEST 10 : getDocumentsByPatientId(1)
+  final docs = await dao.getDocumentsByPatientId(patientId);
+  print('TEST 10: getDocumentsByPatientId($patientId) → ${docs.length} document(s)');
+  for (final d in docs) {
+    print('   - [${d.typeDocument}] ${d.titre}');
+  }
+
+  print('=====');
+
+  // TEST 11 : getDocumentsByType(1, 'ordonnance')
+  final ordonnances = await dao.getDocumentsByType(patientId, 'ordonnance');
+  print('TEST 11: getDocumentsByType($patientId, \'ordonnance\') → ${ordonnances.length} résultat(s)');
 
   print('===== FIN SMOKE TEST =====');
 }
