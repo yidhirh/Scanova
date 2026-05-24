@@ -226,7 +226,7 @@ class ChifaParser {
     return cleaned;
   }
 
-  static bool _isCommonWord(String word) {
+  static bool _isCommonWord(String word) { // cette fonction sert à filtrer les labels
     final cw = word.toUpperCase().trim();
     const List<String> common = [
       'REPUBLIQUE', 'ALGERIENNE', 'DEMOCRATIQUE', 'POPULAIRE',

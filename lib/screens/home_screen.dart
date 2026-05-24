@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'document_type_selection_screen.dart';
 import 'ocr_screen.dart';
+import 'patient_list_screen.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -20,6 +21,15 @@ class HomeScreen extends StatelessWidget {
       context,
       MaterialPageRoute(
         builder: (context) => const DocumentTypeSelectionScreen(),
+      ),
+    );
+  }
+
+  void _goToPatientList(BuildContext context) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => const PatientListScreen(),
       ),
     );
   }
@@ -97,6 +107,32 @@ class HomeScreen extends StatelessWidget {
                   icon: const Icon(Icons.credit_card),
                   label: const Text(
                     'Scanner CNI / Carte Chifa',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: const Color(0xFF2563EB),
+                    side: const BorderSide(
+                      color: Color(0xFF2563EB),
+                      width: 1.4,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 14),
+              SizedBox(
+                width: double.infinity,
+                height: 52,
+                child: OutlinedButton.icon(
+                  onPressed: () => _goToPatientList(context),
+                  icon: const Icon(Icons.people_outline),
+                  label: const Text(
+                    'Voir les patients',
                     style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w700,
