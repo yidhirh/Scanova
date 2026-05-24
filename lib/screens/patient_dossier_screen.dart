@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../database/database_helper.dart';
 import '../models/medical_document.dart';
 import '../models/patient.dart';
+import 'add_document_screen.dart';
 
 class PatientDossierScreen extends StatefulWidget {
   final int patientId;
@@ -26,6 +27,16 @@ class _PatientDossierScreenState extends State<PatientDossierScreen> {
   void initState() {
     super.initState();
     _loadData();
+  }
+
+  Future<void> _openAddDocument() async {
+    final added = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => AddDocumentScreen(patientId: widget.patientId),
+      ),
+    );
+    if (added == true) _loadData();
   }
 
   Future<void> _loadData() async {
@@ -106,6 +117,15 @@ class _PatientDossierScreenState extends State<PatientDossierScreen> {
         elevation: 0,
       ),
       body: _buildBody(),
+      floatingActionButton: _patient == null
+          ? null
+          : FloatingActionButton.extended(
+              onPressed: _openAddDocument,
+              backgroundColor: _primary,
+              foregroundColor: Colors.white,
+              icon: const Icon(Icons.add),
+              label: const Text('Ajouter un document'),
+            ),
     );
   }
 
