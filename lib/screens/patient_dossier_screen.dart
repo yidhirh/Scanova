@@ -4,6 +4,7 @@ import '../database/database_helper.dart';
 import '../models/medical_document.dart';
 import '../models/patient.dart';
 import 'add_document_screen.dart';
+import 'document_viewer_screen.dart';
 
 class PatientDossierScreen extends StatefulWidget {
   final int patientId;
@@ -384,7 +385,12 @@ class _PatientDossierScreenState extends State<PatientDossierScreen> {
         ),
         trailing: Icon(Icons.chevron_right, color: Colors.grey[400]),
         onTap: () {
-          // Ouverture du document — à brancher ultérieurement
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => DocumentViewerScreen(document: doc),
+            ),
+          );
         },
       ),
     );
