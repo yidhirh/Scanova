@@ -28,6 +28,7 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        manifestPlaceholders["com.google.mlkit.vision.DEPENDENCIES"] = "ocr"
     }
 
     buildTypes {

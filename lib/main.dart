@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'screens/login_screen.dart';
+import 'database/database_helper.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await DatabaseHelper.instance.database;
   runApp(const ScanovaApp());
 }
 
@@ -13,13 +16,6 @@ class ScanovaApp extends StatelessWidget {
     return MaterialApp(
       title: 'Scanova',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        useMaterial3: true,
-        fontFamily: 'Roboto',
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF2563EB),
-        ),
-      ),
       home: const LoginScreen(),
     );
   }
