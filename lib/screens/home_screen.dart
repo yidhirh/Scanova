@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'document_type_selection_screen.dart';
+import 'ocr_debug_screen.dart';
 import 'ocr_screen.dart';
 import 'patient_list_screen.dart';
 
@@ -30,6 +31,15 @@ class HomeScreen extends StatelessWidget {
       context,
       MaterialPageRoute(
         builder: (context) => const PatientListScreen(),
+      ),
+    );
+  }
+
+  void _goToOcrDebug(BuildContext context) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => const OcrDebugScreen(),
       ),
     );
   }
@@ -148,6 +158,16 @@ class HomeScreen extends StatelessWidget {
                       borderRadius: BorderRadius.circular(12),
                     ),
                   ),
+                ),
+              ),
+              const SizedBox(height: 32),
+              // TEMPORAIRE — à supprimer après validation sur vrais bilans
+              TextButton.icon(
+                onPressed: () => _goToOcrDebug(context),
+                icon: const Icon(Icons.bug_report_outlined, size: 18),
+                label: const Text('Debug OCR bilan'),
+                style: TextButton.styleFrom(
+                  foregroundColor: const Color(0xFF94A3B8),
                 ),
               ),
             ],

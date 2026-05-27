@@ -66,8 +66,13 @@ class _DocumentViewerScreenState extends State<DocumentViewerScreen> {
   @override
   Widget build(BuildContext context) {
     final doc = widget.document;
-    final file = File(doc.filePath);
-    final fileExists = file.existsSync();
+    // Stage A multi-page : on affiche encore une seule image (la 1re page).
+    // Au stage B, on passera à un PageView pour swiper entre toutes les pages.
+    final firstPage = (doc.pages != null && doc.pages!.isNotEmpty)
+        ? doc.pages!.first
+        : null;
+    final file = firstPage != null ? File(firstPage.filePath) : null;
+    final fileExists = file != null && file.existsSync();
     final typeColor = _colorForType(doc.typeDocument);
 
     return Scaffold(

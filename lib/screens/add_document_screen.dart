@@ -1,11 +1,17 @@
 import 'dart:io';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../database/database_helper.dart';
+import '../models/bilan_page.dart';
+import '../models/document_page.dart';
 import '../models/medical_document.dart';
+import '../services/bilan_parser.dart';
 import '../services/ocr_service.dart';
+import 'bilan_form_screen.dart';
 
 class AddDocumentScreen extends StatefulWidget {
   final int patientId;
@@ -56,13 +62,23 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
     );
     if (picked == null) return;
 
+    final file = File(picked.path);
+    setState(() => _image = file);
+    await _runOcr(file);
+  }
+
+  /// Lance l'OCR adapté au type de document courant.
+  /// Bilan biologique → reconstruction spatiale des colonnes.
+  /// Autres types → extraction plate (comportement précédent).
+  Future<void> _runOcr(File image) async {
     setState(() {
-      _image = File(picked.path);
       _isScanning = true;
       _ocrText = '';
     });
 
-    final text = await _ocrService.extractTextFromImage(picked.path);
+    final text = _selectedType == 'bilan'
+        ? await _ocrService.extractStructuredText(image)
+        : await _ocrService.extractTextFromImage(image.path);
 
     if (!mounted) return;
     setState(() {
@@ -91,8 +107,20 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
     return '${parts[2]}-${parts[1]}-${parts[0]}';
   }
 
+  /// Persiste [tempFile] dans `app/[subdir]/{patientId}/`. Sous-dossier paramétré
+  /// pour séparer les bilans (qui ont leur propre table) des documents génériques.
+  Future<String> _persistImage(File tempFile, {required String subdir}) async {
+    final appDir = await getApplicationDocumentsDirectory();
+    final destDir = Directory(p.join(appDir.path, subdir, '${widget.patientId}'));
+    await destDir.create(recursive: true);
+    final ext = p.extension(tempFile.path).isNotEmpty ? p.extension(tempFile.path) : '.jpg';
+    final fileName = '${DateTime.now().millisecondsSinceEpoch}$ext';
+    final dest = File(p.join(destDir.path, fileName));
+    await tempFile.copy(dest.path);
+    return dest.path;
+  }
+
   Future<void> _save() async {
-    if (!_formKey.currentState!.validate()) return;
     if (_image == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -103,6 +131,16 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
       return;
     }
 
+    // Le bilan biologique a son propre flux structuré (parser + formulaire de
+    // correction). On contourne la validation titre/date de cet écran :
+    // BilanFormScreen a ses propres champs (date d'examen, labo, médecin, n°).
+    if (_selectedType == 'bilan') {
+      await _saveBilan();
+      return;
+    }
+
+    if (!_formKey.currentState!.validate()) return;
+
     setState(() => _isSaving = true);
 
     try {
@@ -110,19 +148,75 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
           ? _toIsoDate(_dateController.text.trim())
           : null;
 
+      final permanentPath = await _persistImage(_image!, subdir: 'documents');
+
+      // Multi-page : pour l'instant l'UI ne capture qu'une image → on crée
+      // un document avec une page #1. L'UI multi-page viendra au stage B.
+      // `documentId: 0` est un placeholder ; la DAO l'écrase avec l'id généré.
       await DatabaseHelper.instance.insertMedicalDocument(
         MedicalDocument(
           patientId: widget.patientId,
           typeDocument: _selectedType,
           titre: _titreController.text.trim(),
           description: _ocrText.isNotEmpty ? _ocrText : null,
-          filePath: _image!.path,
           documentDate: dateIso,
+          pages: [
+            DocumentPage(
+              documentId: 0,
+              pageNumber: 1,
+              filePath: permanentPath,
+            ),
+          ],
         ),
       );
 
       if (!mounted) return;
       Navigator.pop(context, true);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Erreur : $e'),
+          backgroundColor: Colors.red,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
+    }
+  }
+
+  /// Flux bilan : persiste l'image, parse l'OCR, route vers le formulaire de
+  /// correction. L'insertion en DB est faite par [BilanFormScreen] après
+  /// validation utilisateur. On pop avec `true` au retour pour signaler au
+  /// dossier patient qu'il doit se rafraîchir.
+  Future<void> _saveBilan() async {
+    setState(() => _isSaving = true);
+    try {
+      final permanentPath = await _persistImage(_image!, subdir: 'bilans');
+      final pages = [
+        BilanPage(bilanId: 0, pageNumber: 1, filePath: permanentPath),
+      ];
+      final initialBilan = _ocrText.isNotEmpty
+          ? BilanParser.parse(_ocrText, widget.patientId)
+          : null;
+
+      if (!mounted) return;
+      final bilanId = await Navigator.push<int>(
+        context,
+        MaterialPageRoute(
+          builder: (_) => BilanFormScreen(
+            patientId: widget.patientId,
+            initialBilan: initialBilan,
+            pages: pages,
+          ),
+        ),
+      );
+
+      if (!mounted) return;
+      if (bilanId != null) {
+        Navigator.pop(context, true);
+      }
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -312,7 +406,16 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
           children: _types.map((type) {
             final selected = _selectedType == type.value;
             return GestureDetector(
-              onTap: () => setState(() => _selectedType = type.value),
+              onTap: () {
+                  // Si l'image est déjà chargée et qu'on croise la frontière
+                  // 'bilan' (vers ou depuis), l'OCR doit être relancé avec la
+                  // bonne méthode.
+                  final needsRescan = _image != null &&
+                      (type.value == 'bilan' || _selectedType == 'bilan') &&
+                      type.value != _selectedType;
+                  setState(() => _selectedType = type.value);
+                  if (needsRescan) _runOcr(_image!);
+                },
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 150),
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),

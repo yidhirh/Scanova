@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 
 import '../database/database_helper.dart';
+import '../models/bilan.dart';
 import '../models/medical_document.dart';
 import '../models/patient.dart';
 import 'add_document_screen.dart';
+import 'bilan_viewer_screen.dart';
 import 'document_viewer_screen.dart';
 
 class PatientDossierScreen extends StatefulWidget {
@@ -21,6 +23,7 @@ class _PatientDossierScreenState extends State<PatientDossierScreen> {
 
   Patient? _patient;
   List<MedicalDocument> _documents = [];
+  List<Bilan> _bilans = [];
   bool _isLoading = true;
   String? _error;
 
@@ -43,15 +46,19 @@ class _PatientDossierScreenState extends State<PatientDossierScreen> {
   Future<void> _loadData() async {
     try {
       final dao = DatabaseHelper.instance;
+      // Charge en parallèle : patient + documents (eager pages) + bilans (lazy,
+      // sans valeurs ni pages — hydratés à l'ouverture via getBilanById).
       final results = await Future.wait([
         dao.getPatientById(widget.patientId),
         dao.getDocumentsByPatientId(widget.patientId),
+        dao.getBilansByPatientId(widget.patientId),
       ]);
 
       if (!mounted) return;
       setState(() {
         _patient = results[0] as Patient?;
         _documents = results[1] as List<MedicalDocument>;
+        _bilans = results[2] as List<Bilan>;
         _isLoading = false;
       });
     } catch (e) {
@@ -61,6 +68,20 @@ class _PatientDossierScreenState extends State<PatientDossierScreen> {
         _isLoading = false;
       });
     }
+  }
+
+  /// Ouvre la visionneuse d'un bilan en l'hydratant (valeurs + pages) au
+  /// moment du tap. Évite de charger toutes les valeurs au load du dossier
+  /// (cf. doc de [DatabaseHelper.getBilansByPatientId]).
+  Future<void> _openBilan(int bilanId) async {
+    final full = await DatabaseHelper.instance.getBilanById(bilanId);
+    if (full == null || !mounted) return;
+
+    final changed = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(builder: (_) => BilanViewerScreen(bilan: full)),
+    );
+    if (changed == true) _loadData(); // bilan supprimé → rafraîchir
   }
 
   /// Convertit YYYY-MM-DD (SQLite) en DD/MM/YYYY (affichage).
@@ -157,6 +178,10 @@ class _PatientDossierScreenState extends State<PatientDossierScreen> {
           const SizedBox(height: 20),
           _buildDocumentStats(),
           const SizedBox(height: 20),
+          if (_bilans.isNotEmpty) ...[
+            _buildBilanList(),
+            const SizedBox(height: 20),
+          ],
           _buildDocumentList(),
         ],
       ),
@@ -211,6 +236,8 @@ class _PatientDossierScreenState extends State<PatientDossierScreen> {
           const SizedBox(height: 8),
           _buildInfoRow(Icons.calendar_today_outlined, 'Né(e) le', _formatDate(p.dateNaissance)),
           _buildInfoRow(Icons.folder_outlined, 'Documents', '${_documents.length}'),
+          if (_bilans.isNotEmpty)
+            _buildInfoRow(Icons.science_outlined, 'Bilans', '${_bilans.length}'),
           if (p.groupeSanguin != null && p.groupeSanguin!.isNotEmpty)
             _buildInfoRow(Icons.bloodtype_outlined, 'Groupe sanguin', p.groupeSanguin!),
           if (p.numeroCni != null && p.numeroCni!.isNotEmpty)
@@ -392,6 +419,79 @@ class _PatientDossierScreenState extends State<PatientDossierScreen> {
             ),
           );
         },
+      ),
+    );
+  }
+
+  // ── Liste des bilans ────────────────────────────────────────────────────
+
+  Widget _buildBilanList() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Bilans biologiques (${_bilans.length})',
+          style: const TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+            color: Color(0xFF0F172A),
+          ),
+        ),
+        const SizedBox(height: 10),
+        Column(children: _bilans.map(_buildBilanTile).toList()),
+      ],
+    );
+  }
+
+  Widget _buildBilanTile(Bilan b) {
+    final dateStr = b.dateExamen != null
+        ? _formatDate(
+            '${b.dateExamen!.year.toString().padLeft(4, '0')}'
+            '-${b.dateExamen!.month.toString().padLeft(2, '0')}'
+            '-${b.dateExamen!.day.toString().padLeft(2, '0')}',
+          )
+        : '—';
+    final subtitle = [
+      dateStr,
+      if (b.laboratoire != null && b.laboratoire!.isNotEmpty) b.laboratoire!,
+    ].join('  ·  ');
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+        leading: Container(
+          width: 42,
+          height: 42,
+          decoration: BoxDecoration(
+            color: Colors.green.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: const Icon(Icons.science_outlined, color: Colors.green, size: 22),
+        ),
+        title: Text(
+          'Bilan du $dateStr',
+          style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
+        ),
+        subtitle: Text(
+          subtitle,
+          style: TextStyle(fontSize: 13, color: Colors.grey[500]),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+        trailing: Icon(Icons.chevron_right, color: Colors.grey[400]),
+        onTap: b.id != null ? () => _openBilan(b.id!) : null,
       ),
     );
   }
