@@ -23,13 +23,13 @@ class BilanParser {
     int ordre = 0;
 
     for (final ligne in lignes) {
-      final cat = _detecterCategorie(ligne);
+      final cat = detecterCategorie(ligne);
       if (cat != null) {
         categorieCourante = cat;
         continue;
       }
 
-      final valeur = _parserLigneValeur(ligne, categorieCourante, ordre);
+      final valeur = parserLigneValeur(ligne, categorieCourante, ordre);
       if (valeur != null) {
         valeurs.add(valeur);
         ordre++;
@@ -41,8 +41,8 @@ class BilanParser {
     return Bilan(
       patientId: patientId,
       valeurs: valeurs,
-      dateExamen: _extraireDate(texteOcr),
-      laboratoire: _extraireLaboratoire(texteOcr),
+      dateExamen: extraireDate(texteOcr),
+      laboratoire: extraireLaboratoire(texteOcr),
       texteOcrBrut: texteOcr,
       createdAt: DateTime.now(),
     );
@@ -60,6 +60,7 @@ class BilanParser {
     'BIOCHIMIE-HORMONOLOGIE': 'Biochimie',
     'BIOCHIMIEHORMONOLOGIE': 'Biochimie',
     'HORMONOLOGIE': 'Hormonologie',
+    'TRANSAMINASES': 'transaminases',
     'HEMOSTASE': 'Hémostase',
     'HÉMOSTASE': 'Hémostase',
     'IONOGRAMME': 'Ionogramme',
@@ -81,7 +82,7 @@ class BilanParser {
     'EQUILIBRE LEUCOCYTAIRE': 'Hématologie',
   };
 
-  static String? _detecterCategorie(String ligne) {
+  static String? detecterCategorie(String ligne) {
     // Une ligne de catégorie ne contient pas de chiffres (les valeurs en ont
     // toujours). Garde-fou contre les faux positifs type "BIOCHIMIE 03/03/24".
     if (RegExp(r'\d').hasMatch(ligne)) return null;
@@ -104,11 +105,12 @@ class BilanParser {
   ///
   /// Tolérance OCR : `μ` est souvent rendu `u` (parfois `µ` U+00B5). Les
   /// exposants `10³` deviennent `10*3`, `10^3` ou `103`.
-  static const String _unitePattern =
+  static const String unitePattern =
       r'(?:'
       r'10\s*[*^]?\s*[36]\s*/\s*[uµμU][lL]'   // 10*3/uL, 10^6/μL, 103 /uL
       r'|10\s*[*^]?\s*[36]\s*/\s*m[lL]'        // 10*3/mL (variante)
       r'|[µμu]UI?\s*/\s*m[lL]'                 // µUI/mL, uIU/mL
+      r'|[µμu]Ul?\s*/\s*m[lL]'                 // µUl/mL, uIU/mL
       r'|[µμu]g\s*/\s*d?[lL]'                  // µg/dL, ug/L
       r'|[µμu]mol\s*/\s*[lL]'                  // µmol/L
       r'|mg\s*/\s*d?[lL]'                      // mg/dL, mg/L
@@ -117,6 +119,8 @@ class BilanParser {
       r'|mmol\s*/\s*[lL]'                      // mmol/L
       r'|UI?\s*/\s*[lL]'                       // U/L, UI/L
       r'|g\s*/\s*d?[lL]'                       // g/L, g/dL
+      r'|[fF][lL]'                            // fL, fl, FL
+      r'|[sS]econdes?'
       r'|%|fL|pg|secondes?|mm'
       r')';
 
@@ -128,37 +132,37 @@ class BilanParser {
   /// - Valeur : décimale (virgule OU point) ou entier. Marqueur `*` toléré
   ///   après (signal hors-norme du labo 1, on l'ignore — calculé via norme).
   /// - Unité : motif [_unitePattern].
-  /// - Reste = norme (parsée par [_parserNorme]).
+  /// - Reste = norme (parsée par [parserNorme]).
   // 1: nom — 2: valeur — 3: unité — 4: reste (norme)
   // `*?` après la valeur = marqueur hors-norme labo 1, ignoré (recalculé).
   // Concaténation avec _unitePattern : pas d'interpolation possible dans une
   // raw string, et garder _unitePattern factorisé reste plus lisible que
   // de l'inliner ici.
   // ignore: prefer_interpolation_to_compose_strings
-  static final RegExp _regexValeur = RegExp(
-    r'^(.+?)[\s._]{2,}(\d+(?:[.,]\d+)?)\s*\*?\s*('
-    + _unitePattern +
+  static final RegExp regexValeur = RegExp(
+    r'^(.+?)[\s._]{1,}(\d+(?:[.,]\d+)?)\s*\*?\s*('
+    + unitePattern +
     r')\s*(.*)$',
   );
 
-  static ValeurBiologique? _parserLigneValeur(
+  static ValeurBiologique? parserLigneValeur(
     String ligne,
     String? categorie,
     int ordre,
   ) {
-    final m = _regexValeur.firstMatch(ligne);
+    final m = regexValeur.firstMatch(ligne);
     if (m == null) {
-      return _parserLigneQualitative(ligne, categorie, ordre);
+      return parserLigneQualitative(ligne, categorie, ordre);
     }
 
-    final nom = _nettoyerNom(m.group(1)!);
+    final nom = nettoyerNom(m.group(1)!);
     if (nom.isEmpty) return null;
 
     final valeurStr = m.group(2)!.replaceAll(',', '.');
-    final unite = _normaliserUnite(m.group(3)!);
+    final unite = normaliserUnite(m.group(3)!);
     final normeStr = m.group(4)?.trim() ?? '';
 
-    final norme = _parserNorme(normeStr);
+    final norme = parserNorme(normeStr);
 
     return ValeurBiologique(
       bilanId: 0, // placeholder, écrasé par insertBilan
@@ -175,20 +179,20 @@ class BilanParser {
 
   /// Résultats qualitatifs (parasitologie : "Absence", "Présence") : pas de
   /// valeur numérique, pas d'unité. Stocké dans [ValeurBiologique.valeurTexte].
-  static final RegExp _regexQualitative = RegExp(
+  static final RegExp regexQualitative = RegExp(
     r'^(.+?)[\s._]{2,}(Absence|Pr[ée]sence|N[ée]gatif|Positif)\.?$',
     caseSensitive: false,
   );
 
-  static ValeurBiologique? _parserLigneQualitative(
+  static ValeurBiologique? parserLigneQualitative(
     String ligne,
     String? categorie,
     int ordre,
   ) {
-    final m = _regexQualitative.firstMatch(ligne);
+    final m = regexQualitative.firstMatch(ligne);
     if (m == null) return null;
 
-    final nom = _nettoyerNom(m.group(1)!);
+    final nom = nettoyerNom(m.group(1)!);
     if (nom.isEmpty) return null;
 
     return ValeurBiologique(
@@ -203,7 +207,7 @@ class BilanParser {
   /// Nettoyage du nom d'analyse : retire les dots de remplissage en queue,
   /// les espaces multiples, et la coche `V`/`v` du labo 3 si elle est isolée
   /// en fin de nom (ex: "Glycémie V" → "Glycémie").
-  static String _nettoyerNom(String s) {
+  static String nettoyerNom(String s) {
     return s
         .replaceAll(RegExp(r'[._]+$'), '')        // dots/underscores en queue
         .replaceAll(RegExp(r'\s+\b[Vv]\b\s*$'), '') // coche OCR (labo 3)
@@ -213,7 +217,7 @@ class BilanParser {
 
   /// Normalise l'unité : collapse les espaces autour de `/`, harmonise `u`→`µ`
   /// pour les unités micro (µg, µmol, µUI), normalise les exposants OCR.
-  static String _normaliserUnite(String u) {
+  static String normaliserUnite(String u) {
     var s = u.replaceAll(RegExp(r'\s+'), '');
     // 10*3/uL → 10³/µL (forme canonique), idem 10^6, 103
     s = s.replaceAllMapped(
@@ -238,7 +242,7 @@ class BilanParser {
   /// - seuil max  `< 2.00`       → (null, max)
   /// - seuil min  `> 0.35`       → (min, null)
   /// - sinon                     → texte libre conservé pour relecture humaine
-  static ({double? min, double? max, String? texte}) _parserNorme(String s) {
+  static ({double? min, double? max, String? texte}) parserNorme(String s) {
     s = s.trim().replaceAll(',', '.');
     if (s.isEmpty) return (min: null, max: null, texte: null);
 
@@ -269,29 +273,29 @@ class BilanParser {
 
   /// Cherche en priorité `Prélèvement du : DD/MM/YYYY` (format observé sur
   /// les 3 labos). Fallback : première date `DD/MM/YYYY` du document.
-  static DateTime? _extraireDate(String texteOcr) {
+  static DateTime? extraireDate(String texteOcr) {
     final prelevement = RegExp(
       r'[Pp]r[éeè]l[èeé]vement\s+du\s*:?\s*(\d{1,2})[/.\-](\d{1,2})[/.\-](\d{4})',
     ).firstMatch(texteOcr);
     if (prelevement != null) {
-      return _toDate(prelevement.group(1)!, prelevement.group(2)!, prelevement.group(3)!);
+      return toDate(prelevement.group(1)!, prelevement.group(2)!, prelevement.group(3)!);
     }
 
     final anyDate = RegExp(r'(\d{1,2})[/.\-](\d{1,2})[/.\-](\d{4})').firstMatch(texteOcr);
     if (anyDate != null) {
-      return _toDate(anyDate.group(1)!, anyDate.group(2)!, anyDate.group(3)!);
+      return toDate(anyDate.group(1)!, anyDate.group(2)!, anyDate.group(3)!);
     }
     return null;
   }
 
-  static DateTime? _toDate(String d, String m, String y) {
+  static DateTime? toDate(String d, String m, String y) {
     return DateTime.tryParse('$y-${m.padLeft(2, '0')}-${d.padLeft(2, '0')}');
   }
 
   /// Heuristique très simple : on cherche une ligne contenant "Dr " ou "LABO"
   /// dans les 10 premières lignes (en-tête du bilan). Pas d'engagement de
   /// qualité — l'utilisateur corrige via formulaire.
-  static String? _extraireLaboratoire(String texteOcr) {
+  static String? extraireLaboratoire(String texteOcr) {
     final lignes = texteOcr.split('\n').take(10);
     for (final ligne in lignes) {
       final l = ligne.trim();

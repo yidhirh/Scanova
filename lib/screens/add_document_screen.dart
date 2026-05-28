@@ -10,6 +10,7 @@ import '../models/bilan_page.dart';
 import '../models/document_page.dart';
 import '../models/medical_document.dart';
 import '../services/bilan_parser.dart';
+import '../services/document_scanner_service.dart';
 import '../services/ocr_service.dart';
 import 'bilan_form_screen.dart';
 
@@ -38,6 +39,7 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
   final _dateController = TextEditingController();
   final _ocrService = OcrService();
   final _picker = ImagePicker();
+  final _scannerService = DocumentScannerService();
 
   File? _image;
   String _ocrText = '';
@@ -67,10 +69,24 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
     await _runOcr(file);
   }
 
+  /// Pour les bilans, utilise ML Kit Document Scanner (recadrage + correction
+  /// de perspective automatiques) avant de lancer l'OCR.
+  Future<void> _scanBilan() async {
+    debugPrint('[AddDocumentScreen] Ouverture scanner bilan…');
+    final scanned = await _scannerService.scanDocument();
+    if (scanned == null) {
+      debugPrint('[AddDocumentScreen] Scanner annulé ou erreur.');
+      return;
+    }
+    setState(() => _image = scanned);
+    await _runOcr(scanned);
+  }
+
   /// Lance l'OCR adapté au type de document courant.
   /// Bilan biologique → reconstruction spatiale des colonnes.
   /// Autres types → extraction plate (comportement précédent).
   Future<void> _runOcr(File image) async {
+    debugPrint('[AddDocumentScreen] Lancement OCR — type=$_selectedType path=${image.path}');
     setState(() {
       _isScanning = true;
       _ocrText = '';
@@ -80,6 +96,7 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
         ? await _ocrService.extractStructuredText(image)
         : await _ocrService.extractTextFromImage(image.path);
 
+    debugPrint('[AddDocumentScreen] OCR terminé — ${text.length} caractères extraits');
     if (!mounted) return;
     setState(() {
       _ocrText = text;
@@ -193,6 +210,7 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
   Future<void> _saveBilan() async {
     setState(() => _isSaving = true);
     try {
+      debugPrint('[AddDocumentScreen] Sauvegarde bilan — ocrText=${_ocrText.length} chars');
       final permanentPath = await _persistImage(_image!, subdir: 'bilans');
       final pages = [
         BilanPage(bilanId: 0, pageNumber: 1, filePath: permanentPath),
@@ -322,9 +340,13 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         _sourceButton(
-                          icon: Icons.camera_alt_outlined,
-                          label: 'Caméra',
-                          onTap: () => _pickImage(ImageSource.camera),
+                          icon: _selectedType == 'bilan'
+                              ? Icons.document_scanner_outlined
+                              : Icons.camera_alt_outlined,
+                          label: _selectedType == 'bilan' ? 'Scanner' : 'Caméra',
+                          onTap: _selectedType == 'bilan'
+                              ? _scanBilan
+                              : () => _pickImage(ImageSource.camera),
                         ),
                         const SizedBox(width: 12),
                         _sourceButton(
@@ -366,7 +388,10 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
   Widget _imageActionButton() {
     return Row(
       children: [
-        _miniAction(Icons.camera_alt, () => _pickImage(ImageSource.camera)),
+        _miniAction(
+          _selectedType == 'bilan' ? Icons.document_scanner : Icons.camera_alt,
+          _selectedType == 'bilan' ? _scanBilan : () => _pickImage(ImageSource.camera),
+        ),
         const SizedBox(width: 6),
         _miniAction(Icons.photo_library, () => _pickImage(ImageSource.gallery)),
       ],
