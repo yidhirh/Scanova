@@ -196,7 +196,9 @@ class _PatientListScreenState extends State<PatientListScreen> {
           ),
         ),
         subtitle: Text(
-          'Né(e) le ${_formatDate(patient.dateNaissance)}',
+          patient.age != null
+              ? 'Né(e) le ${_formatDate(patient.dateNaissance)}  ·  ${patient.age} ans'
+              : 'Né(e) le ${_formatDate(patient.dateNaissance)}',
           style: TextStyle(fontSize: 13, color: Colors.grey[500]),
         ),
         trailing: Icon(Icons.chevron_right, color: Colors.grey[400]),

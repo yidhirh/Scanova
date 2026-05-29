@@ -3,6 +3,7 @@
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../models/document_type.dart';
 import '../models/patient_data.dart';
 import '../services/cni_parser.dart';
 import '../services/document_scanner_service.dart';
@@ -297,7 +298,7 @@ class _CniScanScreenState extends State<CniScanScreen> {
       final PatientData patientData = CniParser.combineData(
         rectoData,
         versoData,
-      );
+      ).copyWith(sourceType: DocumentType.cni);
 
       if (!mounted) return;
 
