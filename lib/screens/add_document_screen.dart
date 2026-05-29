@@ -6,13 +6,10 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../database/database_helper.dart';
-import '../models/bilan_page.dart';
 import '../models/document_page.dart';
 import '../models/medical_document.dart';
-import '../services/bilan_parser.dart';
-import '../services/document_scanner_service.dart';
 import '../services/ocr_service.dart';
-import 'bilan_form_screen.dart';
+import 'bilan_scan_screen.dart';
 
 class AddDocumentScreen extends StatefulWidget {
   final int patientId;
@@ -39,7 +36,6 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
   final _dateController = TextEditingController();
   final _ocrService = OcrService();
   final _picker = ImagePicker();
-  final _scannerService = DocumentScannerService();
 
   File? _image;
   String _ocrText = '';
@@ -69,22 +65,22 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
     await _runOcr(file);
   }
 
-  /// Pour les bilans, utilise ML Kit Document Scanner (recadrage + correction
-  /// de perspective automatiques) avant de lancer l'OCR.
-  Future<void> _scanBilan() async {
-    debugPrint('[AddDocumentScreen] Ouverture scanner bilan…');
-    final scanned = await _scannerService.scanDocument();
-    if (scanned == null) {
-      debugPrint('[AddDocumentScreen] Scanner annulé ou erreur.');
-      return;
-    }
-    setState(() => _image = scanned);
-    await _runOcr(scanned);
+  /// Le bilan biologique a son propre flux multi-page : on délègue à
+  /// [BilanScanScreen] (capture N pages → OCR + parsing → formulaire). Au
+  /// retour avec succès, on remonte `true` jusqu'au dossier patient sans
+  /// laisser cet écran à moitié rempli visible.
+  Future<void> _openBilanScan() async {
+    final ok = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => BilanScanScreen(patientId: widget.patientId),
+      ),
+    );
+    if (!mounted) return;
+    if (ok == true) Navigator.pop(context, true);
   }
 
-  /// Lance l'OCR adapté au type de document courant.
-  /// Bilan biologique → reconstruction spatiale des colonnes.
-  /// Autres types → extraction plate (comportement précédent).
+  /// Lance l'OCR (extraction plate) pour les documents génériques.
   Future<void> _runOcr(File image) async {
     debugPrint('[AddDocumentScreen] Lancement OCR — type=$_selectedType path=${image.path}');
     setState(() {
@@ -92,9 +88,7 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
       _ocrText = '';
     });
 
-    final text = _selectedType == 'bilan'
-        ? await _ocrService.extractStructuredText(image)
-        : await _ocrService.extractTextFromImage(image.path);
+    final text = await _ocrService.extractTextFromImage(image.path);
 
     debugPrint('[AddDocumentScreen] OCR terminé — ${text.length} caractères extraits');
     if (!mounted) return;
@@ -148,14 +142,6 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
       return;
     }
 
-    // Le bilan biologique a son propre flux structuré (parser + formulaire de
-    // correction). On contourne la validation titre/date de cet écran :
-    // BilanFormScreen a ses propres champs (date d'examen, labo, médecin, n°).
-    if (_selectedType == 'bilan') {
-      await _saveBilan();
-      return;
-    }
-
     if (!_formKey.currentState!.validate()) return;
 
     setState(() => _isSaving = true);
@@ -203,52 +189,6 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
     }
   }
 
-  /// Flux bilan : persiste l'image, parse l'OCR, route vers le formulaire de
-  /// correction. L'insertion en DB est faite par [BilanFormScreen] après
-  /// validation utilisateur. On pop avec `true` au retour pour signaler au
-  /// dossier patient qu'il doit se rafraîchir.
-  Future<void> _saveBilan() async {
-    setState(() => _isSaving = true);
-    try {
-      debugPrint('[AddDocumentScreen] Sauvegarde bilan — ocrText=${_ocrText.length} chars');
-      final permanentPath = await _persistImage(_image!, subdir: 'bilans');
-      final pages = [
-        BilanPage(bilanId: 0, pageNumber: 1, filePath: permanentPath),
-      ];
-      final initialBilan = _ocrText.isNotEmpty
-          ? BilanParser.parse(_ocrText, widget.patientId)
-          : null;
-
-      if (!mounted) return;
-      final bilanId = await Navigator.push<int>(
-        context,
-        MaterialPageRoute(
-          builder: (_) => BilanFormScreen(
-            patientId: widget.patientId,
-            initialBilan: initialBilan,
-            pages: pages,
-          ),
-        ),
-      );
-
-      if (!mounted) return;
-      if (bilanId != null) {
-        Navigator.pop(context, true);
-      }
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Erreur : $e'),
-          backgroundColor: Colors.red,
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-    } finally {
-      if (mounted) setState(() => _isSaving = false);
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -266,20 +206,72 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
         key: _formKey,
         child: ListView(
           padding: const EdgeInsets.all(16),
+          // Le bilan a un flux multi-page dédié : on masque les champs
+          // génériques (image unique, titre, date) — redondants car
+          // BilanFormScreen gère déjà date/labo et le titre est dérivable.
+          children: _selectedType == 'bilan'
+              ? [
+                  _buildTypeSelector(),
+                  const SizedBox(height: 20),
+                  _buildBilanScanCard(),
+                ]
+              : [
+                  _buildImagePicker(),
+                  const SizedBox(height: 20),
+                  _buildTypeSelector(),
+                  const SizedBox(height: 16),
+                  _buildTitreField(),
+                  const SizedBox(height: 16),
+                  _buildDateField(),
+                  if (_ocrText.isNotEmpty) ...[
+                    const SizedBox(height: 16),
+                    _buildOcrPreview(),
+                  ],
+                  const SizedBox(height: 28),
+                  _buildSaveButton(),
+                ],
+        ),
+      ),
+    );
+  }
+
+  /// Carte d'entrée du flux bilan multi-page (remplace le picker générique
+  /// quand le type "bilan" est sélectionné).
+  Widget _buildBilanScanCard() {
+    return GestureDetector(
+      onTap: _openBilanScan,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: _primary, width: 1.5),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.04),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Column(
           children: [
-            _buildImagePicker(),
-            const SizedBox(height: 20),
-            _buildTypeSelector(),
-            const SizedBox(height: 16),
-            _buildTitreField(),
-            const SizedBox(height: 16),
-            _buildDateField(),
-            if (_ocrText.isNotEmpty) ...[
-              const SizedBox(height: 16),
-              _buildOcrPreview(),
-            ],
-            const SizedBox(height: 28),
-            _buildSaveButton(),
+            const Icon(Icons.document_scanner_outlined, size: 48, color: _primary),
+            const SizedBox(height: 12),
+            const Text(
+              'Scanner le bilan (multi-page)',
+              style: TextStyle(
+                color: _primary,
+                fontWeight: FontWeight.w600,
+                fontSize: 15,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Caméra page par page ou import depuis la galerie',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
+            ),
           ],
         ),
       ),
@@ -340,13 +332,9 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         _sourceButton(
-                          icon: _selectedType == 'bilan'
-                              ? Icons.document_scanner_outlined
-                              : Icons.camera_alt_outlined,
-                          label: _selectedType == 'bilan' ? 'Scanner' : 'Caméra',
-                          onTap: _selectedType == 'bilan'
-                              ? _scanBilan
-                              : () => _pickImage(ImageSource.camera),
+                          icon: Icons.camera_alt_outlined,
+                          label: 'Caméra',
+                          onTap: () => _pickImage(ImageSource.camera),
                         ),
                         const SizedBox(width: 12),
                         _sourceButton(
@@ -388,10 +376,7 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
   Widget _imageActionButton() {
     return Row(
       children: [
-        _miniAction(
-          _selectedType == 'bilan' ? Icons.document_scanner : Icons.camera_alt,
-          _selectedType == 'bilan' ? _scanBilan : () => _pickImage(ImageSource.camera),
-        ),
+        _miniAction(Icons.camera_alt, () => _pickImage(ImageSource.camera)),
         const SizedBox(width: 6),
         _miniAction(Icons.photo_library, () => _pickImage(ImageSource.gallery)),
       ],
@@ -431,16 +416,7 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
           children: _types.map((type) {
             final selected = _selectedType == type.value;
             return GestureDetector(
-              onTap: () {
-                  // Si l'image est déjà chargée et qu'on croise la frontière
-                  // 'bilan' (vers ou depuis), l'OCR doit être relancé avec la
-                  // bonne méthode.
-                  final needsRescan = _image != null &&
-                      (type.value == 'bilan' || _selectedType == 'bilan') &&
-                      type.value != _selectedType;
-                  setState(() => _selectedType = type.value);
-                  if (needsRescan) _runOcr(_image!);
-                },
+              onTap: () => setState(() => _selectedType = type.value),
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 150),
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),

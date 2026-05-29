@@ -157,6 +157,9 @@ class BilanParser {
 
     final nom = nettoyerNom(m.group(1)!);
     if (nom.isEmpty) return null;
+    // Rejet des lignes de méthode (ex: "JAFFE cinétique Cobas 6000(cee)") que
+    // l'OCR fait parfois ressembler à une valeur. Ce ne sont pas des analyses.
+    if (estLigneMethode(nom)) return null;
 
     final valeurStr = m.group(2)!.replaceAll(',', '.');
     final unite = normaliserUnite(m.group(3)!);
@@ -203,6 +206,18 @@ class BilanParser {
       ordre: ordre,
     );
   }
+
+  /// Mots-clés de méthode/automate analytique. Si le nom extrait en contient
+  /// un, la ligne décrit une méthode (ex: "Héxokinase Cobas 6000(cee)"), pas
+  /// une analyse → on la rejette pour éviter un faux positif dans le formulaire.
+  static final RegExp _motsClesMethode = RegExp(
+    r'\b(?:Cobas|Selectra|cin[ée]tique|M[ée]thode|JAFFE|H[ée]xokinase|'
+    r'oxydase|Snibe|Immun|enzymatique|Chimiluminescence|IFCC)\b',
+    caseSensitive: false,
+  );
+
+  /// `true` si [nom] contient un mot-clé de méthode analytique.
+  static bool estLigneMethode(String nom) => _motsClesMethode.hasMatch(nom);
 
   /// Nettoyage du nom d'analyse : retire les dots de remplissage en queue,
   /// les espaces multiples, et la coche `V`/`v` du labo 3 si elle est isolée
