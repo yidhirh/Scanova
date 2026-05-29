@@ -7,6 +7,7 @@ import '../models/document_type.dart';
 import '../models/patient_data.dart';
 import '../services/chifa_parser.dart';
 import '../services/document_image_preprocessor.dart';
+import '../services/document_scanner_service.dart';
 import '../services/ocr_service.dart';
 import 'patient_form_screen.dart';
 
@@ -25,6 +26,7 @@ class _ChifaScanScreenState extends State<ChifaScanScreen> {
   final ImagePicker _picker = ImagePicker();
   final OcrService _ocrService = OcrService();
   final DocumentImagePreprocessor _preprocessor = DocumentImagePreprocessor();
+  final DocumentScannerService _scannerService = DocumentScannerService();
 
   File? _image;
   bool _isProcessing = false;
@@ -42,6 +44,18 @@ class _ChifaScanScreenState extends State<ChifaScanScreen> {
     setState(() {
       _image = File(picked.path);
       _currentStep = 'Photo prete. Lancez l analyse.';
+    });
+  }
+
+  /// Ouvre ML Kit Document Scanner pour capturer la carte Chifa avec
+  /// détection automatique des bords et correction de perspective.
+  Future<void> _scanCard() async {
+    final File? scanned = await _scannerService.scanDocument();
+    if (scanned == null) return;
+    if (!mounted) return;
+    setState(() {
+      _image = scanned;
+      _currentStep = 'Carte scannée. Lancez l\'analyse.';
     });
   }
 
@@ -239,7 +253,7 @@ class _ChifaScanScreenState extends State<ChifaScanScreen> {
           ),
           const SizedBox(height: 10),
           Text(
-            'Une seule photo suffit. Posez la carte sur fond sombre, sans reflets, et cadrez bien les deux bords.',
+            'Une seule prise suffit. Le scanner détecte automatiquement les bords de la carte et corrige la perspective.',
             textAlign: TextAlign.center,
             style: TextStyle(
               fontSize: 14,
@@ -250,9 +264,9 @@ class _ChifaScanScreenState extends State<ChifaScanScreen> {
           const SizedBox(height: 24),
           _buildStep(
             number: '1',
-            title: 'Photographier la carte',
-            subtitle: 'Utilisez la camera ou choisissez depuis la galerie.',
-            icon: Icons.camera_alt,
+            title: 'Scanner la carte',
+            subtitle: 'Pointez vers la carte — les bords sont détectés automatiquement. Ou choisissez depuis la galerie.',
+            icon: Icons.document_scanner,
           ),
           const SizedBox(height: 14),
           _buildStep(
@@ -452,10 +466,10 @@ class _ChifaScanScreenState extends State<ChifaScanScreen> {
         children: [
           Expanded(
             child: ElevatedButton.icon(
-              onPressed: busy ? null : () => _pickImage(ImageSource.camera),
-              icon: const Icon(Icons.camera_alt),
+              onPressed: busy ? null : _scanCard,
+              icon: const Icon(Icons.document_scanner),
               label: const Text(
-                'Camera',
+                'Scanner',
                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
               ),
               style: ElevatedButton.styleFrom(

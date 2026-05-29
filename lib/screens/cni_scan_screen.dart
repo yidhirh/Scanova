@@ -3,8 +3,10 @@
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../models/document_type.dart';
 import '../models/patient_data.dart';
 import '../services/cni_parser.dart';
+import '../services/document_scanner_service.dart';
 import '../services/ocr_service.dart';
 import 'patient_form_screen.dart';
 
@@ -30,6 +32,7 @@ class _CniScanScreenState extends State<CniScanScreen> {
 
   final ImagePicker _picker = ImagePicker();
   final OcrService _ocrService = OcrService();
+  final DocumentScannerService _scannerService = DocumentScannerService();
 
   @override
   void dispose() {
@@ -125,6 +128,69 @@ class _CniScanScreenState extends State<CniScanScreen> {
         _currentStep = 'Erreur pendant la sélection';
       });
       _showErrorDialog('Erreur lors de la sélection : $e');
+    }
+  }
+
+  /// Ouvre ML Kit Document Scanner deux fois : d'abord pour le recto, puis
+  /// pour le verso. Chaque scan bénéficie du recadrage et de la correction de
+  /// perspective automatiques du SDK.
+  Future<void> _scanSequential() async {
+    if (_isCapturing || _isProcessing) return;
+
+    setState(() {
+      _isCapturing = true;
+      _rectoImage = null;
+      _versoImage = null;
+      _currentStep = 'Scan du recto…';
+    });
+
+    try {
+      final File? recto = await _scannerService.scanDocument();
+      if (recto == null) {
+        if (!mounted) return;
+        setState(() {
+          _isCapturing = false;
+          _currentStep = 'Scan annulé';
+        });
+        return;
+      }
+
+      if (!mounted) return;
+      setState(() {
+        _rectoImage = recto;
+        _currentStep = 'Recto scanné. Scannez maintenant le verso…';
+      });
+      _showSuccessMessage('Recto scanné');
+
+      await Future.delayed(const Duration(milliseconds: 600));
+
+      if (!mounted) return;
+      final File? verso = await _scannerService.scanDocument();
+      if (verso == null) {
+        if (!mounted) return;
+        setState(() {
+          _isCapturing = false;
+          _currentStep = 'Verso annulé. Veuillez recommencer.';
+        });
+        _showErrorDialog('Scan du verso annulé. Veuillez recommencer pour numériser les deux faces.');
+        return;
+      }
+
+      if (!mounted) return;
+      setState(() {
+        _versoImage = verso;
+        _isCapturing = false;
+        _currentStep = 'Deux faces scannées. Prêt pour l\'extraction.';
+      });
+      _showSuccessMessage('Verso scanné');
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _isCapturing = false;
+        _isProcessing = false;
+        _currentStep = 'Erreur pendant le scan';
+      });
+      _showErrorDialog('Erreur lors du scan : $e');
     }
   }
 
@@ -232,7 +298,7 @@ class _CniScanScreenState extends State<CniScanScreen> {
       final PatientData patientData = CniParser.combineData(
         rectoData,
         versoData,
-      );
+      ).copyWith(sourceType: DocumentType.cni);
 
       if (!mounted) return;
 
@@ -461,7 +527,7 @@ class _CniScanScreenState extends State<CniScanScreen> {
           const SizedBox(height: 22),
 
           const Text(
-            'Capture automatique recto / verso',
+            'Scan automatique recto / verso',
             textAlign: TextAlign.center,
             style: TextStyle(
               color: _textColor,
@@ -473,7 +539,7 @@ class _CniScanScreenState extends State<CniScanScreen> {
           const SizedBox(height: 10),
 
           Text(
-            "L'application va capturer le recto, afficher une petite miniature, puis ouvrir directement la caméra pour le verso.",
+            "Le scanner détecte automatiquement les bords de la carte et corrige la perspective. Il s'ouvre deux fois : d'abord pour le recto, puis pour le verso.",
             textAlign: TextAlign.center,
             style: TextStyle(
               fontSize: 14,
@@ -486,8 +552,8 @@ class _CniScanScreenState extends State<CniScanScreen> {
 
           _buildStep(
             number: '1',
-            title: 'Photo du recto',
-            subtitle: 'La première face est enregistrée temporairement.',
+            title: 'Scanner le recto',
+            subtitle: 'Pointez la caméra vers la face avant — les bords sont détectés automatiquement.',
             icon: Icons.crop_portrait,
           ),
 
@@ -495,8 +561,8 @@ class _CniScanScreenState extends State<CniScanScreen> {
 
           _buildStep(
             number: '2',
-            title: 'Photo du verso',
-            subtitle: 'La caméra se rouvre directement pour la deuxième face.',
+            title: 'Scanner le verso',
+            subtitle: 'Le scanner se rouvre directement pour la deuxième face.',
             icon: Icons.flip,
           ),
 
@@ -802,7 +868,7 @@ class _CniScanScreenState extends State<CniScanScreen> {
         children: [
           Expanded(
             child: ElevatedButton.icon(
-              onPressed: busy ? null : _captureSequentialImages,
+              onPressed: busy ? null : _scanSequential,
               icon: busy
                   ? const SizedBox(
                       width: 20,
@@ -812,9 +878,9 @@ class _CniScanScreenState extends State<CniScanScreen> {
                         color: Colors.white,
                       ),
                     )
-                  : const Icon(Icons.camera_alt),
+                  : const Icon(Icons.document_scanner),
               label: const Text(
-                'Caméra',
+                'Scanner',
                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
               ),
               style: ElevatedButton.styleFrom(

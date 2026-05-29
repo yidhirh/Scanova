@@ -21,6 +21,48 @@ class Patient {
     this.updatedAt,
   });
 
+  /// Âge en années révolues, calculé dynamiquement (jamais stocké, sinon
+  /// il deviendrait périmé au prochain anniversaire).
+  /// Retourne `null` si la date de naissance est absente, mal formée ou
+  /// hors plage → l'appelant affiche alors "Âge inconnu".
+  int? get age {
+    final naissance = _parseIsoDate(dateNaissance);
+    if (naissance == null) return null;
+
+    final now = DateTime.now();
+    var years = now.year - naissance.year;
+    // Anniversaire pas encore passé cette année → on retire un an.
+    // (un patient né le 31/12 n'a pas le même âge en janvier qu'en décembre).
+    if (now.month < naissance.month ||
+        (now.month == naissance.month && now.day < naissance.day)) {
+      years--;
+    }
+    return years < 0 ? null : years;
+  }
+
+  /// Parse une date ISO `YYYY-MM-DD` de façon stricte.
+  /// On n'utilise PAS `DateTime.tryParse` directement : il normalise
+  /// silencieusement les débordements (ex: `1958-13-45` deviendrait une
+  /// date valide mais fausse au lieu de renvoyer null). On valide donc les
+  /// plages, puis on vérifie par round-trip (attrape aussi le 31 février, etc.).
+  static DateTime? _parseIsoDate(String iso) {
+    if (iso.isEmpty) return null;
+    final parts = iso.split('-');
+    if (parts.length != 3) return null;
+
+    final year = int.tryParse(parts[0]);
+    final month = int.tryParse(parts[1]);
+    final day = int.tryParse(parts[2]);
+    if (year == null || month == null || day == null) return null;
+    if (month < 1 || month > 12 || day < 1 || day > 31) return null;
+
+    final date = DateTime(year, month, day);
+    if (date.year != year || date.month != month || date.day != day) {
+      return null; // débordement normalisé par DateTime → date invalide.
+    }
+    return date;
+  }
+
   Map<String, dynamic> toMap() {
     return {
       if (id != null) 'id': id,

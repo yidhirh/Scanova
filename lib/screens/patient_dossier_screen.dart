@@ -235,9 +235,7 @@ class _PatientDossierScreenState extends State<PatientDossierScreen> {
           const Divider(),
           const SizedBox(height: 8),
           _buildInfoRow(Icons.calendar_today_outlined, 'Né(e) le', _formatDate(p.dateNaissance)),
-          _buildInfoRow(Icons.folder_outlined, 'Documents', '${_documents.length}'),
-          if (_bilans.isNotEmpty)
-            _buildInfoRow(Icons.science_outlined, 'Bilans', '${_bilans.length}'),
+          _buildInfoRow(Icons.cake_outlined, 'Âge', p.age != null ? '${p.age} ans' : 'Âge inconnu'),
           if (p.groupeSanguin != null && p.groupeSanguin!.isNotEmpty)
             _buildInfoRow(Icons.bloodtype_outlined, 'Groupe sanguin', p.groupeSanguin!),
           if (p.numeroCni != null && p.numeroCni!.isNotEmpty)
