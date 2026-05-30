@@ -14,7 +14,9 @@ class DatabaseHelper {
   // v3 : multi-page. Ajout `document_pages` et `bilan_pages`.
   //      Retrait `medical_documents.file_path` et `bilans.image_path`
   //      (déplacés vers les tables pages).
-  static const _databaseVersion = 3;
+  // v4 : OCR page par page. Ajout `ocr_text` sur `document_pages` et
+  //      `bilan_pages` (texte OCR propre à chaque page).
+  static const _databaseVersion = 4;
 
   DatabaseHelper._privateConstructor();
   static final DatabaseHelper instance = DatabaseHelper._privateConstructor();
@@ -207,6 +209,17 @@ class DatabaseHelper {
         await db.execute('PRAGMA foreign_keys = ON');
       }
     }
+
+    if (oldVersion < 4) {
+      // Seules les DB déjà en v3 ont les tables pages SANS `ocr_text` : pour
+      // oldVersion < 3, le palier v3 ci-dessus appelle _createPagesTables qui
+      // les crée déjà avec `ocr_text` (forme finale). On évite ainsi un
+      // "duplicate column" sur un upgrade direct v1/v2 → v4.
+      if (oldVersion >= 3) {
+        await db.execute('ALTER TABLE document_pages ADD COLUMN ocr_text TEXT');
+        await db.execute('ALTER TABLE bilan_pages ADD COLUMN ocr_text TEXT');
+      }
+    }
   }
 
   /// Création des tables `bilans` et `valeurs_biologiques` (schéma v3, sans
@@ -260,6 +273,7 @@ class DatabaseHelper {
         document_id   INTEGER NOT NULL,
         page_number   INTEGER NOT NULL,
         file_path     TEXT NOT NULL,
+        ocr_text      TEXT,
         FOREIGN KEY (document_id) REFERENCES medical_documents(id) ON DELETE CASCADE
       )
     ''');
@@ -270,6 +284,7 @@ class DatabaseHelper {
         bilan_id      INTEGER NOT NULL,
         page_number   INTEGER NOT NULL,
         file_path     TEXT NOT NULL,
+        ocr_text      TEXT,
         FOREIGN KEY (bilan_id) REFERENCES bilans(id) ON DELETE CASCADE
       )
     ''');
@@ -461,6 +476,16 @@ class DatabaseHelper {
       orderBy: 'page_number ASC',
     );
     return rows.map((r) => DocumentPage.fromMap(r)).toList();
+  }
+
+  /// Supprime un document médical. Ses pages (`document_pages`) sont supprimées
+  /// automatiquement par la contrainte FK `ON DELETE CASCADE`. Le patient n'est
+  /// pas affecté. Retourne le nombre de lignes supprimées (0 si id inconnu).
+  Future<int> deleteMedicalDocument(int id) async {
+    final db = await database;
+    final count = await db.delete('medical_documents', where: 'id = ?', whereArgs: [id]);
+    print('[DB] deleteMedicalDocument → $count ligne(s) supprimée(s) (id=$id)');
+    return count;
   }
 
   // ── bilans + valeurs_biologiques + bilan_pages ────────────────────────────

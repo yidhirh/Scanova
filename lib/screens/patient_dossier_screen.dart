@@ -411,13 +411,14 @@ class _PatientDossierScreenState extends State<PatientDossierScreen> {
           style: TextStyle(fontSize: 13, color: Colors.grey[500]),
         ),
         trailing: Icon(Icons.chevron_right, color: Colors.grey[400]),
-        onTap: () {
-          Navigator.push(
+        onTap: () async {
+          final changed = await Navigator.push<bool>(
             context,
             MaterialPageRoute(
               builder: (_) => DocumentViewerScreen(document: doc),
             ),
           );
+          if (changed == true) _loadData(); // document supprimé → rafraîchir
         },
       ),
     );

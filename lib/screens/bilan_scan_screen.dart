@@ -118,8 +118,15 @@ class _BilanScanScreenState extends State<BilanScanScreen> {
           if (buffer.isNotEmpty) buffer.write('\n');
           buffer.write(texte);
         }
+        // Le texte concaténé alimente le parser ; chaque page conserve aussi
+        // son propre texte pour l'affichage page par page dans la visionneuse.
         pagesBilan.add(
-          BilanPage(bilanId: 0, pageNumber: i + 1, filePath: permanentPath),
+          BilanPage(
+            bilanId: 0,
+            pageNumber: i + 1,
+            filePath: permanentPath,
+            ocrText: texte.isNotEmpty ? texte : null,
+          ),
         );
       }
 
