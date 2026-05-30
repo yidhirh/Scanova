@@ -14,9 +14,16 @@ class DocumentViewerScreen extends StatefulWidget {
 }
 
 class _DocumentViewerScreenState extends State<DocumentViewerScreen> {
-  static const Color _primary = Color(0xFF2563EB);
-
   bool _showInfo = true;
+
+  final PageController _pageController = PageController();
+  int _currentPage = 0;
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
 
   String _formatDate(String? isoDate) {
     if (isoDate == null || isoDate.isEmpty) return '—';
@@ -66,13 +73,8 @@ class _DocumentViewerScreenState extends State<DocumentViewerScreen> {
   @override
   Widget build(BuildContext context) {
     final doc = widget.document;
-    // Stage A multi-page : on affiche encore une seule image (la 1re page).
-    // Au stage B, on passera à un PageView pour swiper entre toutes les pages.
-    final firstPage = (doc.pages != null && doc.pages!.isNotEmpty)
-        ? doc.pages!.first
-        : null;
-    final file = firstPage != null ? File(firstPage.filePath) : null;
-    final fileExists = file != null && file.existsSync();
+    final pages = doc.pages ?? const [];
+    final pageCount = pages.length;
     final typeColor = _colorForType(doc.typeDocument);
 
     return Scaffold(
@@ -87,6 +89,20 @@ class _DocumentViewerScreenState extends State<DocumentViewerScreen> {
         foregroundColor: Colors.white,
         elevation: 0,
         actions: [
+          // Compteur de page n'affiché que pour les documents multi-page.
+          if (pageCount > 1)
+            Center(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                child: Text(
+                  '${_currentPage + 1} / $pageCount',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ),
           IconButton(
             icon: Icon(_showInfo ? Icons.info : Icons.info_outline),
             tooltip: 'Informations',
@@ -97,22 +113,45 @@ class _DocumentViewerScreenState extends State<DocumentViewerScreen> {
       body: Column(
         children: [
           Expanded(
-            child: GestureDetector(
-              onTap: () => setState(() => _showInfo = !_showInfo),
-              child: fileExists
-                  ? InteractiveViewer(
-                      minScale: 0.5,
-                      maxScale: 5.0,
-                      child: Center(
-                        child: Image.file(
-                          file,
-                          fit: BoxFit.contain,
-                          errorBuilder: (_, __, ___) => _buildError(),
-                        ),
+            child: pageCount == 0
+                ? _buildError()
+                : Stack(
+                    children: [
+                      PageView.builder(
+                        controller: _pageController,
+                        itemCount: pageCount,
+                        onPageChanged: (i) => setState(() => _currentPage = i),
+                        itemBuilder: (context, index) {
+                          final file = File(pages[index].filePath);
+                          final exists = file.existsSync();
+                          return GestureDetector(
+                            onTap: () => setState(() => _showInfo = !_showInfo),
+                            child: exists
+                                ? InteractiveViewer(
+                                    minScale: 0.5,
+                                    maxScale: 5.0,
+                                    child: Center(
+                                      child: Image.file(
+                                        file,
+                                        fit: BoxFit.contain,
+                                        errorBuilder: (_, __, ___) => _buildError(),
+                                      ),
+                                    ),
+                                  )
+                                : _buildError(),
+                          );
+                        },
                       ),
-                    )
-                  : _buildError(),
-            ),
+                      // Indicateurs de page (points), masqués si une seule page.
+                      if (pageCount > 1)
+                        Positioned(
+                          bottom: 12,
+                          left: 0,
+                          right: 0,
+                          child: _buildPageDots(pageCount),
+                        ),
+                    ],
+                  ),
           ),
           AnimatedSwitcher(
             duration: const Duration(milliseconds: 200),
@@ -122,6 +161,25 @@ class _DocumentViewerScreenState extends State<DocumentViewerScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildPageDots(int pageCount) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: List.generate(pageCount, (i) {
+        final active = i == _currentPage;
+        return AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          margin: const EdgeInsets.symmetric(horizontal: 3),
+          width: active ? 18 : 6,
+          height: 6,
+          decoration: BoxDecoration(
+            color: active ? Colors.white : Colors.white38,
+            borderRadius: BorderRadius.circular(3),
+          ),
+        );
+      }),
     );
   }
 

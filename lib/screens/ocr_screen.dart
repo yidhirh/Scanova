@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../services/document_scanner_service.dart';
 import '../services/ocr_service.dart';
 
 class OcrScreen extends StatefulWidget {
@@ -13,26 +14,37 @@ class OcrScreen extends StatefulWidget {
 }
 
 class _OcrScreenState extends State<OcrScreen> {
-  final ImagePicker _picker = ImagePicker(); // importer des images depuis la galerie ou la caméra
+  final ImagePicker _picker = ImagePicker(); // import depuis la galerie
+  final DocumentScannerService _scannerService = DocumentScannerService(); // caméra : scanner ML Kit
   final OcrService _ocrService = OcrService(); // OCR principal : ML Kit hors ligne
 
   File? _selectedImage;
   String _extractedText = '';
   bool _isLoading = false;
 
-  Future<void> _pickImage(ImageSource source) async {
+  /// Caméra : scanner ML Kit (détection des bords + correction de perspective).
+  Future<void> _scanWithCamera() async {
+    final File? scanned = await _scannerService.scanDocument();
+    if (scanned == null) return;
+    await _runOcrOnImage(scanned);
+  }
+
+  /// Galerie : sélection d'une image existante via ImagePicker.
+  Future<void> _pickFromGallery() async {
+    final XFile? image = await _picker.pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 100,
+      maxWidth: 2000,
+      maxHeight: 2500,
+    );
+    if (image == null) return;
+    await _runOcrOnImage(File(image.path));
+  }
+
+  Future<void> _runOcrOnImage(File image) async {
     try {
-      final XFile? image = await _picker.pickImage(
-        source: source,
-        imageQuality: 100,
-        maxWidth: 2000,
-        maxHeight: 2500,
-      );
-
-      if (image == null) return;
-
       setState(() {
-        _selectedImage = File(image.path);
+        _selectedImage = image;
         _isLoading = true;
         _extractedText = '';
       });
@@ -96,19 +108,15 @@ class _OcrScreenState extends State<OcrScreen> {
               children: [
                 Expanded(
                   child: ElevatedButton.icon(
-                    onPressed: _isLoading
-                        ? null
-                        : () => _pickImage(ImageSource.camera),
-                    icon: const Icon(Icons.camera_alt),
+                    onPressed: _isLoading ? null : _scanWithCamera,
+                    icon: const Icon(Icons.document_scanner),
                     label: const Text('Caméra'),
                   ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
                   child: ElevatedButton.icon(
-                    onPressed: _isLoading
-                        ? null
-                        : () => _pickImage(ImageSource.gallery),
+                    onPressed: _isLoading ? null : _pickFromGallery,
                     icon: const Icon(Icons.photo),
                     label: const Text('Galerie'),
                   ),

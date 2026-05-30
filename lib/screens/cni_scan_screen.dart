@@ -40,16 +40,6 @@ class _CniScanScreenState extends State<CniScanScreen> {
     super.dispose();
   }
 
-  Future<XFile?> _takePhoto() async {
-    return await _picker.pickImage(
-      source: ImageSource.camera,
-      imageQuality: 90,
-      maxWidth: 2200,
-      maxHeight: 2200,
-      preferredCameraDevice: CameraDevice.rear,
-    );
-  }
-
   Future<XFile?> _pickFromGallery() async {
     return await _picker.pickImage(
       source: ImageSource.gallery,
@@ -191,84 +181,6 @@ class _CniScanScreenState extends State<CniScanScreen> {
         _currentStep = 'Erreur pendant le scan';
       });
       _showErrorDialog('Erreur lors du scan : $e');
-    }
-  }
-
-  Future<void> _captureSequentialImages() async {
-    if (_isCapturing || _isProcessing) return;
-
-    setState(() {
-      _isCapturing = true;
-      _isProcessing = false;
-      _rectoImage = null;
-      _versoImage = null;
-      _currentStep = 'Capture du recto...';
-    });
-
-    try {
-      final XFile? rectoPhoto = await _takePhoto();
-
-      if (rectoPhoto == null) {
-        if (!mounted) return;
-        setState(() {
-          _isCapturing = false;
-          _currentStep = 'Capture annulée';
-        });
-        return;
-      }
-
-      if (!mounted) return;
-
-      setState(() {
-        _rectoImage = File(rectoPhoto.path);
-        _currentStep = 'Recto enregistré. Préparez le verso...';
-      });
-
-      _showSuccessMessage('Recto enregistré');
-
-      await Future.delayed(const Duration(milliseconds: 900));
-
-      if (!mounted) return;
-
-      setState(() {
-        _currentStep = 'Capture du verso...';
-      });
-
-      final XFile? versoPhoto = await _takePhoto();
-
-      if (versoPhoto == null) {
-        if (!mounted) return;
-
-        setState(() {
-          _isCapturing = false;
-          _currentStep = 'Verso annulé. Veuillez recommencer.';
-        });
-
-        _showErrorDialog(
-          'Capture du verso annulée. Veuillez recommencer pour capturer les deux faces.',
-        );
-        return;
-      }
-
-      if (!mounted) return;
-
-      setState(() {
-        _versoImage = File(versoPhoto.path);
-        _isCapturing = false;
-        _currentStep = 'Deux faces capturées. Prêt pour l\'extraction.';
-      });
-
-      _showSuccessMessage('Verso enregistré');
-    } catch (e) {
-      if (!mounted) return;
-
-      setState(() {
-        _isCapturing = false;
-        _isProcessing = false;
-        _currentStep = 'Erreur pendant la capture';
-      });
-
-      _showErrorDialog('Erreur lors de la capture : $e');
     }
   }
 
