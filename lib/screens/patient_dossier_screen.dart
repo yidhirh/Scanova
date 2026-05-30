@@ -373,6 +373,7 @@ class _PatientDossierScreenState extends State<PatientDossierScreen> {
 
   Widget _buildDocumentTile(MedicalDocument doc) {
     final color = _colorForType(doc.typeDocument);
+    final nbPages = doc.pages?.length ?? 0;
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
@@ -405,7 +406,8 @@ class _PatientDossierScreenState extends State<PatientDossierScreen> {
           ),
         ),
         subtitle: Text(
-          '${_capitalize(doc.typeDocument)}  ·  ${_formatDate(doc.documentDate)}',
+          '${_capitalize(doc.typeDocument)}  ·  ${_formatDate(doc.documentDate)}'
+          '${nbPages > 1 ? '  ·  $nbPages pages' : ''}',
           style: TextStyle(fontSize: 13, color: Colors.grey[500]),
         ),
         trailing: Icon(Icons.chevron_right, color: Colors.grey[400]),

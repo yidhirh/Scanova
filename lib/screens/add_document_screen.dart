@@ -8,6 +8,7 @@ import 'package:image_picker/image_picker.dart';
 import '../database/database_helper.dart';
 import '../models/document_page.dart';
 import '../models/medical_document.dart';
+import '../services/document_scanner_service.dart';
 import '../services/ocr_service.dart';
 import 'bilan_scan_screen.dart';
 
@@ -36,12 +37,34 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
   final _dateController = TextEditingController();
   final _ocrService = OcrService();
   final _picker = ImagePicker();
+  final _scannerService = DocumentScannerService();
 
-  File? _image;
-  String _ocrText = '';
+  /// Pages du document, dans l'ordre d'affichage (= ordre de stockage et de
+  /// concaténation de l'OCR). Le mono-page n'est qu'un cas particulier : une
+  /// seule entrée dans cette liste.
+  final List<File> _pages = [];
+
+  /// OCR mémorisé par page (clé = chemin du fichier temporaire). Évite de
+  /// relancer l'OCR au réordonnancement : on ne fait qu'une extraction par page
+  /// à l'ajout, puis on concatène dans l'ordre courant via [_ocrText].
+  final Map<String, String> _ocrByPath = {};
+
   String _selectedType = 'ordonnance';
   bool _isScanning = false;
   bool _isSaving = false;
+
+  /// Texte OCR concaténé dans l'ordre d'affichage des pages.
+  String get _ocrText {
+    final buffer = StringBuffer();
+    for (final page in _pages) {
+      final text = _ocrByPath[page.path];
+      if (text != null && text.isNotEmpty) {
+        if (buffer.isNotEmpty) buffer.write('\n');
+        buffer.write(text);
+      }
+    }
+    return buffer.toString();
+  }
 
   @override
   void dispose() {
@@ -51,18 +74,62 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
     super.dispose();
   }
 
-  Future<void> _pickImage(ImageSource source) async {
-    final XFile? picked = await _picker.pickImage(
-      source: source,
+  // ── Ajout de pages ────────────────────────────────────────────────────────
+
+  /// Caméra : scanner ML Kit (détection des bords + correction de perspective),
+  /// une page à la fois — même qualité de capture que les bilans et les cartes.
+  Future<void> _addFromCamera() async {
+    final scanned = await _scannerService.scanDocument();
+    if (scanned == null) return;
+    setState(() => _pages.add(scanned));
+    await _ocrPage(scanned);
+  }
+
+  /// Galerie : sélection multiple, ajoute toutes les images choisies.
+  Future<void> _addFromGallery() async {
+    final picked = await _picker.pickMultiImage(
       imageQuality: 100,
       maxWidth: 2000,
       maxHeight: 2500,
     );
-    if (picked == null) return;
+    if (picked.isEmpty) return;
+    final files = picked.map((x) => File(x.path)).toList();
+    setState(() => _pages.addAll(files));
+    for (final file in files) {
+      await _ocrPage(file);
+    }
+  }
 
-    final file = File(picked.path);
-    setState(() => _image = file);
-    await _runOcr(file);
+  /// Lance l'OCR (extraction plate) d'une page et mémorise le résultat.
+  Future<void> _ocrPage(File image) async {
+    debugPrint('[AddDocumentScreen] OCR page — type=$_selectedType path=${image.path}');
+    setState(() => _isScanning = true);
+
+    final text = await _ocrService.extractTextFromImage(image.path);
+
+    debugPrint('[AddDocumentScreen] OCR terminé — ${text.length} caractères extraits');
+    if (!mounted) return;
+    setState(() {
+      _ocrByPath[image.path] = text;
+      _isScanning = false;
+    });
+  }
+
+  void _removePage(int index) {
+    setState(() {
+      final removed = _pages.removeAt(index);
+      _ocrByPath.remove(removed.path);
+    });
+  }
+
+  void _reorder(int oldIndex, int newIndex) {
+    setState(() {
+      // ReorderableListView : si on descend un élément, l'index cible est
+      // décalé de 1 après retrait de l'ancien.
+      if (newIndex > oldIndex) newIndex -= 1;
+      final page = _pages.removeAt(oldIndex);
+      _pages.insert(newIndex, page);
+    });
   }
 
   /// Le bilan biologique a son propre flux multi-page : on délègue à
@@ -78,24 +145,6 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
     );
     if (!mounted) return;
     if (ok == true) Navigator.pop(context, true);
-  }
-
-  /// Lance l'OCR (extraction plate) pour les documents génériques.
-  Future<void> _runOcr(File image) async {
-    debugPrint('[AddDocumentScreen] Lancement OCR — type=$_selectedType path=${image.path}');
-    setState(() {
-      _isScanning = true;
-      _ocrText = '';
-    });
-
-    final text = await _ocrService.extractTextFromImage(image.path);
-
-    debugPrint('[AddDocumentScreen] OCR terminé — ${text.length} caractères extraits');
-    if (!mounted) return;
-    setState(() {
-      _ocrText = text;
-      _isScanning = false;
-    });
   }
 
   Future<void> _pickDate() async {
@@ -118,24 +167,26 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
     return '${parts[2]}-${parts[1]}-${parts[0]}';
   }
 
-  /// Persiste [tempFile] dans `app/[subdir]/{patientId}/`. Sous-dossier paramétré
-  /// pour séparer les bilans (qui ont leur propre table) des documents génériques.
-  Future<String> _persistImage(File tempFile, {required String subdir}) async {
+  // ── Persistance ───────────────────────────────────────────────────────────
+
+  /// Persiste [tempFile] dans `app/[subdir]/{patientId}/`. [index] garantit
+  /// l'unicité du nom même si plusieurs pages sont copiées dans la même ms.
+  Future<String> _persistImage(File tempFile, {required String subdir, required int index}) async {
     final appDir = await getApplicationDocumentsDirectory();
     final destDir = Directory(p.join(appDir.path, subdir, '${widget.patientId}'));
     await destDir.create(recursive: true);
     final ext = p.extension(tempFile.path).isNotEmpty ? p.extension(tempFile.path) : '.jpg';
-    final fileName = '${DateTime.now().millisecondsSinceEpoch}$ext';
+    final fileName = '${DateTime.now().millisecondsSinceEpoch}_$index$ext';
     final dest = File(p.join(destDir.path, fileName));
     await tempFile.copy(dest.path);
     return dest.path;
   }
 
   Future<void> _save() async {
-    if (_image == null) {
+    if (_pages.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Veuillez d\'abord prendre une photo du document.'),
+          content: Text('Veuillez d\'abord ajouter au moins une page du document.'),
           behavior: SnackBarBehavior.floating,
         ),
       );
@@ -151,25 +202,26 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
           ? _toIsoDate(_dateController.text.trim())
           : null;
 
-      final permanentPath = await _persistImage(_image!, subdir: 'documents');
+      // Persiste chaque page dans l'ordre d'affichage → pageNumber 1..N.
+      final docPages = <DocumentPage>[];
+      for (var i = 0; i < _pages.length; i++) {
+        final permanentPath = await _persistImage(_pages[i], subdir: 'documents', index: i);
+        docPages.add(
+          DocumentPage(documentId: 0, pageNumber: i + 1, filePath: permanentPath),
+        );
+      }
 
-      // Multi-page : pour l'instant l'UI ne capture qu'une image → on crée
-      // un document avec une page #1. L'UI multi-page viendra au stage B.
+      final ocr = _ocrText;
+
       // `documentId: 0` est un placeholder ; la DAO l'écrase avec l'id généré.
       await DatabaseHelper.instance.insertMedicalDocument(
         MedicalDocument(
           patientId: widget.patientId,
           typeDocument: _selectedType,
           titre: _titreController.text.trim(),
-          description: _ocrText.isNotEmpty ? _ocrText : null,
+          description: ocr.isNotEmpty ? ocr : null,
           documentDate: dateIso,
-          pages: [
-            DocumentPage(
-              documentId: 0,
-              pageNumber: 1,
-              filePath: permanentPath,
-            ),
-          ],
+          pages: docPages,
         ),
       );
 
@@ -207,8 +259,8 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
         child: ListView(
           padding: const EdgeInsets.all(16),
           // Le bilan a un flux multi-page dédié : on masque les champs
-          // génériques (image unique, titre, date) — redondants car
-          // BilanFormScreen gère déjà date/labo et le titre est dérivable.
+          // génériques (pages, titre, date) — redondants car BilanFormScreen
+          // gère déjà date/labo et le titre est dérivable.
           children: _selectedType == 'bilan'
               ? [
                   _buildTypeSelector(),
@@ -216,7 +268,7 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
                   _buildBilanScanCard(),
                 ]
               : [
-                  _buildImagePicker(),
+                  _buildPagesSection(),
                   const SizedBox(height: 20),
                   _buildTypeSelector(),
                   const SizedBox(height: 16),
@@ -235,7 +287,7 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
     );
   }
 
-  /// Carte d'entrée du flux bilan multi-page (remplace le picker générique
+  /// Carte d'entrée du flux bilan multi-page (remplace la section générique
   /// quand le type "bilan" est sélectionné).
   Widget _buildBilanScanCard() {
     return GestureDetector(
@@ -278,122 +330,148 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
     );
   }
 
-  Widget _buildImagePicker() {
-    return Container(
-      height: 200,
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: _image == null ? Colors.grey.shade300 : _primary,
-          width: _image == null ? 1.5 : 2,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: _isScanning
-          ? const Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  CircularProgressIndicator(),
-                  SizedBox(height: 12),
-                  Text('Extraction du texte…', style: TextStyle(color: Colors.grey)),
-                ],
-              ),
-            )
-          : _image != null
-              ? ClipRRect(
-                  borderRadius: BorderRadius.circular(15),
-                  child: Stack(
-                    fit: StackFit.expand,
-                    children: [
-                      Image.file(_image!, fit: BoxFit.cover),
-                      Positioned(
-                        bottom: 8,
-                        right: 8,
-                        child: _imageActionButton(),
-                      ),
-                    ],
-                  ),
-                )
-              : Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(Icons.add_photo_alternate_outlined,
-                        size: 48, color: Colors.grey[400]),
-                    const SizedBox(height: 12),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        _sourceButton(
-                          icon: Icons.camera_alt_outlined,
-                          label: 'Caméra',
-                          onTap: () => _pickImage(ImageSource.camera),
-                        ),
-                        const SizedBox(width: 12),
-                        _sourceButton(
-                          icon: Icons.photo_library_outlined,
-                          label: 'Galerie',
-                          onTap: () => _pickImage(ImageSource.gallery),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-    );
-  }
+  // ── Section multi-page ──────────────────────────────────────────────────────
 
-  Widget _sourceButton({
-    required IconData icon,
-    required String label,
-    required VoidCallback onTap,
-  }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-        decoration: BoxDecoration(
-          color: _primary.withValues(alpha: 0.08),
-          borderRadius: BorderRadius.circular(10),
-        ),
-        child: Row(
+  Widget _buildPagesSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
           children: [
-            Icon(icon, color: _primary, size: 20),
-            const SizedBox(width: 6),
-            Text(label, style: const TextStyle(color: _primary, fontWeight: FontWeight.w600)),
+            Expanded(
+              child: _addButton(
+                icon: Icons.document_scanner_outlined,
+                label: 'Caméra',
+                onTap: _isSaving ? null : _addFromCamera,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _addButton(
+                icon: Icons.photo_library_outlined,
+                label: 'Galerie',
+                onTap: _isSaving ? null : _addFromGallery,
+              ),
+            ),
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _imageActionButton() {
-    return Row(
-      children: [
-        _miniAction(Icons.camera_alt, () => _pickImage(ImageSource.camera)),
-        const SizedBox(width: 6),
-        _miniAction(Icons.photo_library, () => _pickImage(ImageSource.gallery)),
+        const SizedBox(height: 12),
+        if (_pages.isEmpty)
+          _buildEmptyPages()
+        else
+          _buildPagesList(),
+        if (_isScanning) ...[
+          const SizedBox(height: 12),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: const [
+              SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+              SizedBox(width: 10),
+              Text('Extraction du texte…', style: TextStyle(color: Colors.grey)),
+            ],
+          ),
+        ],
       ],
     );
   }
 
-  Widget _miniAction(IconData icon, VoidCallback onTap) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.all(6),
-        decoration: BoxDecoration(
-          color: Colors.black54,
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Icon(icon, color: Colors.white, size: 18),
+  Widget _addButton({
+    required IconData icon,
+    required String label,
+    required VoidCallback? onTap,
+  }) {
+    return OutlinedButton.icon(
+      onPressed: onTap,
+      icon: Icon(icon),
+      label: Text(label),
+      style: OutlinedButton.styleFrom(
+        foregroundColor: _primary,
+        side: BorderSide(color: _primary.withValues(alpha: 0.5)),
+        minimumSize: const Size.fromHeight(48),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
+    );
+  }
+
+  Widget _buildEmptyPages() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(vertical: 36),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.grey.shade300, width: 1.5),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.add_photo_alternate_outlined, size: 48, color: Colors.grey[400]),
+          const SizedBox(height: 12),
+          Text(
+            'Ajoute une ou plusieurs pages\nvia la caméra ou la galerie.',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: Colors.grey[600]),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPagesList() {
+    return ReorderableListView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      buildDefaultDragHandles: false,
+      itemCount: _pages.length,
+      onReorder: _reorder,
+      itemBuilder: (context, index) {
+        final file = _pages[index];
+        return Card(
+          key: ValueKey(file.path),
+          margin: const EdgeInsets.symmetric(vertical: 4),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+            side: BorderSide(color: Colors.grey.shade300),
+          ),
+          child: ListTile(
+            leading: ClipRRect(
+              borderRadius: BorderRadius.circular(6),
+              child: Image.file(
+                file,
+                width: 48,
+                height: 48,
+                fit: BoxFit.cover,
+              ),
+            ),
+            title: Text(
+              'Page ${index + 1}',
+              style: const TextStyle(fontWeight: FontWeight.w500),
+            ),
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.delete_outline),
+                  color: Colors.red.shade400,
+                  onPressed: _isSaving ? null : () => _removePage(index),
+                  tooltip: 'Supprimer',
+                ),
+                ReorderableDragStartListener(
+                  index: index,
+                  child: const Padding(
+                    padding: EdgeInsets.all(8),
+                    child: Icon(Icons.drag_handle, color: Colors.grey),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -528,6 +606,7 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
   }
 
   Widget _buildSaveButton() {
+    final n = _pages.length;
     return ElevatedButton.icon(
       onPressed: _isSaving || _isScanning ? null : _save,
       icon: _isSaving
@@ -537,7 +616,11 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
               child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
             )
           : const Icon(Icons.save_outlined),
-      label: Text(_isSaving ? 'Enregistrement…' : 'Enregistrer le document'),
+      label: Text(
+        _isSaving
+            ? 'Enregistrement…'
+            : 'Enregistrer le document${n > 1 ? ' ($n pages)' : ''}',
+      ),
       style: ElevatedButton.styleFrom(
         backgroundColor: _primary,
         foregroundColor: Colors.white,
