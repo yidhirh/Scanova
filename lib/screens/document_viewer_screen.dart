@@ -2,8 +2,19 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 
+import '../database/database_helper.dart';
+import '../models/document_page.dart';
 import '../models/medical_document.dart';
+import '../services/document_print_service.dart';
+import 'fullscreen_image_viewer.dart';
 
+/// Visionneuse d'un document médical générique (ordonnance, radio, compte
+/// rendu, autre). Style aligné sur [BilanViewerScreen] : fond clair, AppBar
+/// bleue, grandes cartes blanches arrondies, aperçu page par page dans une
+/// carte (tap → plein écran), texte OCR de la page courante dans une carte.
+///
+/// Différences métier conservées : type de document, date du document, texte
+/// OCR par page. Menu "3 points" : Imprimer / Supprimer.
 class DocumentViewerScreen extends StatefulWidget {
   final MedicalDocument document;
 
@@ -14,7 +25,8 @@ class DocumentViewerScreen extends StatefulWidget {
 }
 
 class _DocumentViewerScreenState extends State<DocumentViewerScreen> {
-  bool _showInfo = true;
+  static const Color _primary = Color(0xFF2563EB);
+  static const Color _background = Color(0xFFF8FAFC);
 
   final PageController _pageController = PageController();
   int _currentPage = 0;
@@ -24,6 +36,10 @@ class _DocumentViewerScreenState extends State<DocumentViewerScreen> {
     _pageController.dispose();
     super.dispose();
   }
+
+  MedicalDocument get doc => widget.document;
+
+  // ── Helpers présentation ──────────────────────────────────────────────────
 
   String _formatDate(String? isoDate) {
     if (isoDate == null || isoDate.isEmpty) return '—';
@@ -70,96 +86,313 @@ class _DocumentViewerScreenState extends State<DocumentViewerScreen> {
     }
   }
 
+  // ── Actions (menu 3 points) ───────────────────────────────────────────────
+
+  Future<void> _print() async {
+    final pages = doc.pages ?? const <DocumentPage>[];
+    final printPages = pages
+        .map((p) => PrintPage(number: p.pageNumber, imagePath: p.filePath, ocrText: p.ocrText))
+        .toList();
+
+    try {
+      await DocumentPrintService.printDocument(
+        title: doc.titre,
+        metaLines: [
+          'Type : ${_capitalize(doc.typeDocument)}',
+          'Date du document : ${_formatDate(doc.documentDate)}',
+        ],
+        pages: printPages,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Impression impossible : $e'),
+          backgroundColor: Colors.red,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+
+  Future<void> _confirmDelete() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Supprimer ce document ?'),
+        content: const Text(
+          'Voulez-vous vraiment supprimer ce document ? '
+          'Cette action est irréversible.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Annuler'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('Supprimer'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || doc.id == null) return;
+
+    await DatabaseHelper.instance.deleteMedicalDocument(doc.id!);
+    if (mounted) Navigator.pop(context, true);
+  }
+
+  void _openFullscreen() {
+    final pages = doc.pages ?? const <DocumentPage>[];
+    if (pages.isEmpty) return;
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => FullscreenImageViewer(
+          imagePaths: pages.map((p) => p.filePath).toList(),
+          initialIndex: _currentPage,
+          title: doc.titre,
+        ),
+      ),
+    );
+  }
+
+  // ── Build ─────────────────────────────────────────────────────────────────
+
   @override
   Widget build(BuildContext context) {
-    final doc = widget.document;
-    final pages = doc.pages ?? const [];
-    final pageCount = pages.length;
+    final pages = doc.pages ?? const <DocumentPage>[];
     final typeColor = _colorForType(doc.typeDocument);
 
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: _background,
       appBar: AppBar(
         title: Text(
           doc.titre,
           style: const TextStyle(fontWeight: FontWeight.bold),
           overflow: TextOverflow.ellipsis,
         ),
-        backgroundColor: Colors.black,
+        backgroundColor: _primary,
         foregroundColor: Colors.white,
         elevation: 0,
-        actions: [
-          // Compteur de page n'affiché que pour les documents multi-page.
-          if (pageCount > 1)
-            Center(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 8),
-                child: Text(
-                  '${_currentPage + 1} / $pageCount',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-            ),
-          IconButton(
-            icon: Icon(_showInfo ? Icons.info : Icons.info_outline),
-            tooltip: 'Informations',
-            onPressed: () => setState(() => _showInfo = !_showInfo),
+        actions: [_buildMenu()],
+      ),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          _buildHeaderCard(typeColor),
+          const SizedBox(height: 16),
+          _buildPagesSection(pages),
+          const SizedBox(height: 16),
+          _buildPageText(pages),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMenu() {
+    return PopupMenuButton<String>(
+      icon: const Icon(Icons.more_vert),
+      onSelected: (value) {
+        if (value == 'print') _print();
+        if (value == 'delete') _confirmDelete();
+      },
+      itemBuilder: (_) => const [
+        PopupMenuItem(
+          value: 'print',
+          child: ListTile(
+            leading: Icon(Icons.print_outlined),
+            title: Text('Imprimer'),
+            contentPadding: EdgeInsets.zero,
+          ),
+        ),
+        PopupMenuItem(
+          value: 'delete',
+          child: ListTile(
+            leading: Icon(Icons.delete_outline, color: Colors.red),
+            title: Text('Supprimer', style: TextStyle(color: Colors.red)),
+            contentPadding: EdgeInsets.zero,
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ── Carte d'en-tête (infos métier) ────────────────────────────────────────
+
+  Widget _buildHeaderCard(Color typeColor) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
           ),
         ],
       ),
-      body: Column(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Expanded(
-            child: pageCount == 0
-                ? _buildError()
-                : Stack(
-                    children: [
-                      PageView.builder(
-                        controller: _pageController,
-                        itemCount: pageCount,
-                        onPageChanged: (i) => setState(() => _currentPage = i),
-                        itemBuilder: (context, index) {
-                          final file = File(pages[index].filePath);
-                          final exists = file.existsSync();
-                          return GestureDetector(
-                            onTap: () => setState(() => _showInfo = !_showInfo),
-                            child: exists
-                                ? InteractiveViewer(
-                                    minScale: 0.5,
-                                    maxScale: 5.0,
-                                    child: Center(
-                                      child: Image.file(
-                                        file,
-                                        fit: BoxFit.contain,
-                                        errorBuilder: (_, __, ___) => _buildError(),
-                                      ),
-                                    ),
-                                  )
-                                : _buildError(),
-                          );
-                        },
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: typeColor.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(_iconForType(doc.typeDocument), color: typeColor, size: 22),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      doc.titre,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF0F172A),
                       ),
-                      // Indicateurs de page (points), masqués si une seule page.
-                      if (pageCount > 1)
-                        Positioned(
-                          bottom: 12,
-                          left: 0,
-                          right: 0,
-                          child: _buildPageDots(pageCount),
-                        ),
-                    ],
-                  ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      _capitalize(doc.typeDocument),
+                      style: TextStyle(color: typeColor, fontSize: 13),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
-          AnimatedSwitcher(
-            duration: const Duration(milliseconds: 200),
-            child: _showInfo
-                ? _buildInfoPanel(doc, typeColor)
-                : const SizedBox.shrink(),
+          const SizedBox(height: 12),
+          _infoRow(Icons.calendar_today_outlined, 'Date du document', _formatDate(doc.documentDate)),
+        ],
+      ),
+    );
+  }
+
+  Widget _infoRow(IconData icon, String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          Icon(icon, size: 18, color: _primary),
+          const SizedBox(width: 10),
+          Text(
+            '$label : ',
+            style: TextStyle(fontSize: 14, color: Colors.grey[600]),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: Color(0xFF0F172A),
+              ),
+              overflow: TextOverflow.ellipsis,
+            ),
           ),
         ],
+      ),
+    );
+  }
+
+  // ── Aperçu des pages (image par page, tap → plein écran) ──────────────────
+
+  Widget _buildPagesSection(List<DocumentPage> pages) {
+    if (pages.isEmpty) {
+      return Container(
+        height: 160,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: Colors.grey.shade300),
+        ),
+        child: Center(
+          child: Text(
+            'Aucune image disponible',
+            style: TextStyle(color: Colors.grey[500]),
+          ),
+        ),
+      );
+    }
+
+    final pageCount = pages.length;
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(14),
+      child: SizedBox(
+        height: 260,
+        child: Stack(
+          children: [
+            PageView.builder(
+              controller: _pageController,
+              itemCount: pageCount,
+              onPageChanged: (i) => setState(() => _currentPage = i),
+              itemBuilder: (context, index) {
+                final f = File(pages[index].filePath);
+                return GestureDetector(
+                  onTap: _openFullscreen,
+                  child: Container(
+                    color: Colors.black12,
+                    child: f.existsSync()
+                        ? Image.file(f, fit: BoxFit.contain, width: double.infinity)
+                        : Center(
+                            child: Text(
+                              'Fichier introuvable',
+                              style: TextStyle(color: Colors.grey[600]),
+                            ),
+                          ),
+                  ),
+                );
+              },
+            ),
+            // Indice "plein écran" pour signaler l'interaction.
+            Positioned(
+              top: 8,
+              left: 8,
+              child: Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: Colors.black54,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(Icons.fullscreen, color: Colors.white, size: 18),
+              ),
+            ),
+            if (pageCount > 1)
+              Positioned(
+                top: 8,
+                right: 8,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.black54,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    '${_currentPage + 1} / $pageCount',
+                    style: const TextStyle(color: Colors.white, fontSize: 12),
+                  ),
+                ),
+              ),
+            if (pageCount > 1)
+              Positioned(
+                bottom: 8,
+                left: 0,
+                right: 0,
+                child: _buildPageDots(pageCount),
+              ),
+          ],
+        ),
       ),
     );
   }
@@ -175,7 +408,7 @@ class _DocumentViewerScreenState extends State<DocumentViewerScreen> {
           width: active ? 18 : 6,
           height: 6,
           decoration: BoxDecoration(
-            color: active ? Colors.white : Colors.white38,
+            color: active ? Colors.white : Colors.white54,
             borderRadius: BorderRadius.circular(3),
           ),
         );
@@ -183,133 +416,62 @@ class _DocumentViewerScreenState extends State<DocumentViewerScreen> {
     );
   }
 
-  Widget _buildError() {
-    return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(Icons.broken_image_outlined, size: 64, color: Colors.grey[600]),
-          const SizedBox(height: 12),
-          Text(
-            'Fichier introuvable',
-            style: TextStyle(color: Colors.grey[500], fontSize: 15),
-          ),
-        ],
-      ),
-    );
-  }
+  // ── Texte OCR de la page courante (jamais le bloc global) ─────────────────
 
-  Widget _buildInfoPanel(MedicalDocument doc, Color typeColor) {
+  Widget _buildPageText(List<DocumentPage> pages) {
+    final hasPageText = _currentPage < pages.length &&
+        (pages[_currentPage].ocrText?.isNotEmpty ?? false);
+
+    // Repli sur `description` (concaténé) pour les documents mono-page créés
+    // avant le stockage du texte par page.
+    final String text = hasPageText
+        ? pages[_currentPage].ocrText!.trim()
+        : ((pages.length <= 1 ? doc.description : null)?.trim() ?? '');
+
+    final multi = pages.length > 1;
+    final label = multi ? 'Texte extrait (page ${_currentPage + 1})' : 'Texte extrait (OCR)';
+
     return Container(
-      key: const ValueKey('info'),
-      decoration: const BoxDecoration(
-        color: Color(0xFF1E293B),
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey.shade200),
       ),
-      padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
         children: [
-          Center(
-            child: Container(
-              width: 36,
-              height: 4,
-              decoration: BoxDecoration(
-                color: Colors.grey[600],
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
           Row(
             children: [
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: typeColor.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(_iconForType(doc.typeDocument), color: typeColor, size: 22),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      doc.titre,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 16,
-                      ),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      _capitalize(doc.typeDocument),
-                      style: TextStyle(color: typeColor, fontSize: 13),
-                    ),
-                  ],
+              const Icon(Icons.text_snippet_outlined, size: 16, color: Colors.grey),
+              const SizedBox(width: 6),
+              Text(
+                label,
+                style: const TextStyle(
+                  fontSize: 13,
+                  color: Colors.grey,
+                  fontWeight: FontWeight.w500,
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 14),
-          _infoRow(Icons.calendar_today_outlined, 'Date du document', _formatDate(doc.documentDate)),
-          if (doc.description != null && doc.description!.isNotEmpty) ...[
-            const SizedBox(height: 12),
-            const Text(
-              'Texte extrait (OCR)',
-              style: TextStyle(
-                color: Colors.white70,
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const SizedBox(height: 6),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.05),
-                borderRadius: BorderRadius.circular(10),
-              ),
+          const SizedBox(height: 8),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxHeight: 280),
+            child: SingleChildScrollView(
               child: Text(
-                doc.description!.length > 400
-                    ? '${doc.description!.substring(0, 400)}…'
-                    : doc.description!,
-                style: const TextStyle(
-                  color: Colors.white60,
+                text.isEmpty
+                    ? (multi
+                        ? 'Aucun texte extrait pour la page ${_currentPage + 1}.'
+                        : 'Aucun texte extrait.')
+                    : text,
+                style: TextStyle(
                   fontSize: 13,
                   height: 1.4,
+                  color: text.isEmpty ? Colors.grey[400] : const Color(0xFF374151),
                 ),
               ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-
-  Widget _infoRow(IconData icon, String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 6),
-      child: Row(
-        children: [
-          Icon(icon, size: 16, color: Colors.white54),
-          const SizedBox(width: 8),
-          Text(
-            '$label : ',
-            style: const TextStyle(color: Colors.white54, fontSize: 13),
-          ),
-          Text(
-            value,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
             ),
           ),
         ],

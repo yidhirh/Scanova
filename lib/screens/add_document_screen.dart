@@ -100,12 +100,14 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
     }
   }
 
-  /// Lance l'OCR (extraction plate) d'une page et mémorise le résultat.
+  /// Lance l'OCR d'une page et mémorise le résultat. Utilise l'extraction
+  /// structurée (lignes/blocs de lignes), comme les bilans, pour un texte
+  /// lisible et bien organisé plutôt que le flux mot-à-mot de ML Kit.
   Future<void> _ocrPage(File image) async {
     debugPrint('[AddDocumentScreen] OCR page — type=$_selectedType path=${image.path}');
     setState(() => _isScanning = true);
 
-    final text = await _ocrService.extractTextFromImage(image.path);
+    final text = await _ocrService.extractStructuredText(image);
 
     debugPrint('[AddDocumentScreen] OCR terminé — ${text.length} caractères extraits');
     if (!mounted) return;
@@ -113,6 +115,37 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
       _ocrByPath[image.path] = text;
       _isScanning = false;
     });
+  }
+
+  /// Éditeur du texte OCR d'une page : image + champ texte éditable.
+  /// La correction se fait page par page (jamais sur le bloc concaténé).
+  Future<void> _editPageText(int index) async {
+    final file = _pages[index];
+    final edited = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) => _PageTextEditor(
+        pageNumber: index + 1,
+        image: file,
+        initialText: _ocrByPath[file.path] ?? '',
+      ),
+    );
+    if (edited == null) return;
+    setState(() => _ocrByPath[file.path] = edited);
+  }
+
+  /// Aperçu compact du texte OCR d'une page (1re ligne) pour la tuile.
+  String _pageSubtitle(String path) {
+    final text = _ocrByPath[path]?.trim() ?? '';
+    if (_isScanning && text.isEmpty) return 'Extraction du texte…';
+    if (text.isEmpty) return 'Aucun texte — touchez pour saisir';
+    final firstLine = text.split('\n').first.trim();
+    return firstLine.isEmpty ? 'Touchez pour corriger le texte' : firstLine;
   }
 
   void _removePage(int index) {
@@ -203,14 +236,23 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
           : null;
 
       // Persiste chaque page dans l'ordre d'affichage → pageNumber 1..N.
+      // Chaque page conserve SON propre texte OCR (corrigé ou non).
       final docPages = <DocumentPage>[];
       for (var i = 0; i < _pages.length; i++) {
+        final tempPath = _pages[i].path;
         final permanentPath = await _persistImage(_pages[i], subdir: 'documents', index: i);
+        final pageText = _ocrByPath[tempPath];
         docPages.add(
-          DocumentPage(documentId: 0, pageNumber: i + 1, filePath: permanentPath),
+          DocumentPage(
+            documentId: 0,
+            pageNumber: i + 1,
+            filePath: permanentPath,
+            ocrText: (pageText != null && pageText.isNotEmpty) ? pageText : null,
+          ),
         );
       }
 
+      // `description` = texte global concaténé, conservé pour recherche/résumé.
       final ocr = _ocrText;
 
       // `documentId: 0` est un placeholder ; la DAO l'écrase avec l'id généré.
@@ -275,10 +317,6 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
                   _buildTitreField(),
                   const SizedBox(height: 16),
                   _buildDateField(),
-                  if (_ocrText.isNotEmpty) ...[
-                    const SizedBox(height: 16),
-                    _buildOcrPreview(),
-                  ],
                   const SizedBox(height: 28),
                   _buildSaveButton(),
                 ],
@@ -438,6 +476,7 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
             side: BorderSide(color: Colors.grey.shade300),
           ),
           child: ListTile(
+            onTap: _isSaving ? null : () => _editPageText(index),
             leading: ClipRRect(
               borderRadius: BorderRadius.circular(6),
               child: Image.file(
@@ -451,9 +490,21 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
               'Page ${index + 1}',
               style: const TextStyle(fontWeight: FontWeight.w500),
             ),
+            subtitle: Text(
+              _pageSubtitle(file.path),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontSize: 12, color: Colors.grey[500]),
+            ),
             trailing: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
+                IconButton(
+                  icon: const Icon(Icons.edit_outlined),
+                  color: _primary,
+                  onPressed: _isSaving ? null : () => _editPageText(index),
+                  tooltip: 'Corriger le texte',
+                ),
                 IconButton(
                   icon: const Icon(Icons.delete_outline),
                   color: Colors.red.shade400,
@@ -568,43 +619,6 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
     );
   }
 
-  Widget _buildOcrPreview() {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey.shade200),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Icon(Icons.text_snippet_outlined, size: 16, color: Colors.grey),
-              const SizedBox(width: 6),
-              Text(
-                'Texte extrait (${_ocrText.length} caractères)',
-                style: const TextStyle(
-                  fontSize: 13,
-                  color: Colors.grey,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Text(
-            _ocrText.length > 300
-                ? '${_ocrText.substring(0, 300)}…'
-                : _ocrText,
-            style: const TextStyle(fontSize: 13, color: Color(0xFF374151)),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildSaveButton() {
     final n = _pages.length;
     return ElevatedButton.icon(
@@ -639,4 +653,113 @@ class _DocType {
   final Color color;
 
   const _DocType(this.value, this.label, this.icon, this.color);
+}
+
+/// Éditeur du texte OCR d'une page : aperçu image + champ texte éditable.
+/// Pop avec le texte corrigé si l'utilisateur valide, `null` s'il annule.
+class _PageTextEditor extends StatefulWidget {
+  final int pageNumber;
+  final File image;
+  final String initialText;
+
+  const _PageTextEditor({
+    required this.pageNumber,
+    required this.image,
+    required this.initialText,
+  });
+
+  @override
+  State<_PageTextEditor> createState() => _PageTextEditorState();
+}
+
+class _PageTextEditorState extends State<_PageTextEditor> {
+  static const Color _primary = Color(0xFF2563EB);
+  late final TextEditingController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.initialText);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+    return Padding(
+      padding: EdgeInsets.fromLTRB(16, 16, 16, 16 + bottomInset),
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Center(
+              child: Container(
+                width: 36,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey[300],
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Texte de la page ${widget.pageNumber}',
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 12),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: Image.file(
+                widget.image,
+                height: 160,
+                width: double.infinity,
+                fit: BoxFit.contain,
+              ),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _controller,
+              maxLines: 10,
+              minLines: 5,
+              textCapitalization: TextCapitalization.sentences,
+              decoration: InputDecoration(
+                labelText: 'Texte extrait (corrigeable)',
+                alignLabelWithHint: true,
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('Annuler'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: () => Navigator.pop(context, _controller.text.trim()),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: _primary,
+                      foregroundColor: Colors.white,
+                    ),
+                    child: const Text('Valider'),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
