@@ -1,7 +1,6 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
 
 import '../services/document_scanner_service.dart';
 import '../services/ocr_service.dart';
@@ -14,8 +13,7 @@ class OcrScreen extends StatefulWidget {
 }
 
 class _OcrScreenState extends State<OcrScreen> {
-  final ImagePicker _picker = ImagePicker(); // import depuis la galerie
-  final DocumentScannerService _scannerService = DocumentScannerService(); // caméra : scanner ML Kit
+  final DocumentScannerService _scannerService = DocumentScannerService(); // caméra + import galerie : scanner ML Kit
   final OcrService _ocrService = OcrService(); // OCR principal : ML Kit hors ligne
 
   File? _selectedImage;
@@ -29,16 +27,12 @@ class _OcrScreenState extends State<OcrScreen> {
     await _runOcrOnImage(scanned);
   }
 
-  /// Galerie : sélection d'une image existante via ImagePicker.
+  /// Galerie : import via ML Kit (recadrage + perspective + amélioration),
+  /// puis OCR sur l'image nettoyée (une seule page ici).
   Future<void> _pickFromGallery() async {
-    final XFile? image = await _picker.pickImage(
-      source: ImageSource.gallery,
-      imageQuality: 100,
-      maxWidth: 2000,
-      maxHeight: 2500,
-    );
-    if (image == null) return;
-    await _runOcrOnImage(File(image.path));
+    final files = await _scannerService.scanDocuments(pageLimit: 1);
+    if (files.isEmpty) return;
+    await _runOcrOnImage(files.first);
   }
 
   Future<void> _runOcrOnImage(File image) async {

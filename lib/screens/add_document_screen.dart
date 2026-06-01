@@ -3,7 +3,6 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
 
 import '../database/database_helper.dart';
 import '../models/document_page.dart';
@@ -36,7 +35,6 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
   final _titreController = TextEditingController();
   final _dateController = TextEditingController();
   final _ocrService = OcrService();
-  final _picker = ImagePicker();
   final _scannerService = DocumentScannerService();
 
   /// Pages du document, dans l'ordre d'affichage (= ordre de stockage et de
@@ -85,15 +83,13 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
     await _ocrPage(scanned);
   }
 
-  /// Galerie : sélection multiple, ajoute toutes les images choisies.
+  /// Galerie : import via ML Kit (détection des bords + recadrage + correction
+  /// de perspective/orientation + amélioration), multi-pages. Les images
+  /// renvoyées sont déjà propres — elles serviront telles quelles à l'OCR, à la
+  /// visionneuse et à l'impression.
   Future<void> _addFromGallery() async {
-    final picked = await _picker.pickMultiImage(
-      imageQuality: 100,
-      maxWidth: 2000,
-      maxHeight: 2500,
-    );
-    if (picked.isEmpty) return;
-    final files = picked.map((x) => File(x.path)).toList();
+    final files = await _scannerService.scanDocuments();
+    if (files.isEmpty) return;
     setState(() => _pages.addAll(files));
     for (final file in files) {
       await _ocrPage(file);
