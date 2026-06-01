@@ -19,7 +19,7 @@ class CniScanScreen extends StatefulWidget {
 
 class _CniScanScreenState extends State<CniScanScreen> {
   static const Color _primaryColor = Color(0xFF2563EB);
-  static const Color _backgroundColor = Color(0xFFFDF6FD);
+  static const Color _backgroundColor = Color(0xFFF8FAFC);
   static const Color _textColor = Color(0xFF0F172A);
 
   File? _rectoImage;
@@ -404,161 +404,96 @@ class _CniScanScreenState extends State<CniScanScreen> {
     );
   }
 
+  /// Carte compacte d'instructions de préremplissage CNI.
+  /// Mini-stepper 3 étapes : Recto → Verso → Extraire.
   Widget _buildInitialState() {
     return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(22),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(22),
+        borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.06),
-            blurRadius: 18,
-            offset: const Offset(0, 8),
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
           ),
         ],
       ),
       child: Column(
-        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Container(
-            width: 96,
-            height: 96,
-            decoration: BoxDecoration(
-              color: _primaryColor.withValues(alpha: 0.10),
-              shape: BoxShape.circle,
-            ),
-            child: const Icon(
-              Icons.document_scanner_outlined,
-              color: _primaryColor,
-              size: 52,
-            ),
-          ),
-
-          const SizedBox(height: 22),
-
-          const Text(
-            'Scan automatique recto / verso',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: _textColor,
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-
-          const SizedBox(height: 10),
-
-          Text(
-            "Le scanner détecte automatiquement les bords de la carte et corrige la perspective. Il s'ouvre deux fois : d'abord pour le recto, puis pour le verso.",
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: 14,
-              color: Colors.grey[700],
-              height: 1.4,
-            ),
-          ),
-
-          const SizedBox(height: 24),
-
-          _buildStep(
-            number: '1',
-            title: 'Scanner le recto',
-            subtitle: 'Pointez la caméra vers la face avant — les bords sont détectés automatiquement.',
-            icon: Icons.crop_portrait,
-          ),
-
-          const SizedBox(height: 14),
-
-          _buildStep(
-            number: '2',
-            title: 'Scanner le verso',
-            subtitle: 'Le scanner se rouvre directement pour la deuxième face.',
-            icon: Icons.flip,
-          ),
-
-          const SizedBox(height: 14),
-
-          _buildStep(
-            number: '3',
-            title: 'Lancer l\'extraction',
-            subtitle: "Appuyez sur \"Extraire\" pour démarrer l'analyse OCR.",
-            icon: Icons.auto_awesome,
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildStep({
-    required String number,
-    required String title,
-    required String subtitle,
-    required IconData icon,
-  }) {
-    return Container(
-      padding: const EdgeInsets.all(13),
-      decoration: BoxDecoration(
-        color: _backgroundColor,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: Colors.grey.shade200,
-        ),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 38,
-            height: 38,
-            decoration: const BoxDecoration(
-              color: _primaryColor,
-              shape: BoxShape.circle,
-            ),
-            child: Center(
-              child: Text(
-                number,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
+          // En-tête
+          Row(
+            children: [
+              Container(
+                width: 40, height: 40,
+                decoration: BoxDecoration(
+                  color: _primaryColor.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(Icons.credit_card, color: _primaryColor, size: 22),
+              ),
+              const SizedBox(width: 12),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      "Carte d'identité",
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        color: _textColor,
+                      ),
+                    ),
+                    SizedBox(height: 2),
+                    Text(
+                      'Préremplissage automatique du formulaire patient.',
+                      style: TextStyle(fontSize: 12.5, color: Color(0xFF64748B), height: 1.35),
+                    ),
+                  ],
                 ),
               ),
-            ),
+            ],
           ),
+          const SizedBox(height: 12),
 
-          const SizedBox(width: 12),
-
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+          // Mini-stepper 3 étapes
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF8FAFC),
+              border: Border.all(color: const Color(0xFFE2E8F0)),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: const Row(
               children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    color: _textColor,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 15,
-                  ),
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  subtitle,
-                  style: TextStyle(
-                    color: Colors.grey[600],
-                    fontSize: 13,
-                    height: 1.25,
-                  ),
-                ),
+                Expanded(child: _MiniStep(
+                  n: '1', title: 'Recto', sub: 'N° CNI · date · groupe',
+                )),
+                _MiniStepArrow(),
+                Expanded(child: _MiniStep(
+                  n: '2', title: 'Verso', sub: 'Nom · prénom',
+                )),
+                _MiniStepArrow(),
+                Expanded(child: _MiniStep(
+                  n: '3', title: 'Extraire', sub: 'Vérifier les champs',
+                )),
               ],
             ),
           ),
+          const SizedBox(height: 12),
 
-          const SizedBox(width: 8),
-
-          Icon(
-            icon,
-            color: _primaryColor,
-            size: 22,
+          // Badges qualité
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: const [
+              _ScanBadge(icon: Icons.text_fields, label: 'Texte lisible'),
+              _ScanBadge(icon: Icons.wb_sunny,    label: 'Sans reflet'),
+              _ScanBadge(icon: Icons.crop_free,   label: 'Carte cadrée'),
+            ],
           ),
         ],
       ),
@@ -915,6 +850,107 @@ class _CniScanScreenState extends State<CniScanScreen> {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// Petit badge réutilisable affiché dans la carte d'instructions compacte.
+class _ScanBadge extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  const _ScanBadge({required this.icon, required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(8, 4, 10, 4),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF1F5F9),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: const Color(0xFF16A34A)),
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: const TextStyle(
+              fontSize: 11.5,
+              fontWeight: FontWeight.w600,
+              color: Color(0xFF334155),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Une étape du mini-stepper de la carte d'instructions CNI.
+class _MiniStep extends StatelessWidget {
+  final String n;      // "1", "2", "3"
+  final String title;  // "Recto", "Verso", "Extraire"
+  final String sub;    // ligne secondaire courte
+  const _MiniStep({required this.n, required this.title, required this.sub});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 22, height: 22,
+          decoration: const BoxDecoration(
+            color: Color(0xFF2563EB),
+            shape: BoxShape.circle,
+          ),
+          alignment: Alignment.center,
+          child: Text(
+            n,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 11,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          title,
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+            fontSize: 11.5,
+            fontWeight: FontWeight.w700,
+            color: Color(0xFF0F172A),
+            height: 1.1,
+          ),
+        ),
+        const SizedBox(height: 1),
+        Text(
+          sub,
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+            fontSize: 10.5,
+            color: Color(0xFF64748B),
+            height: 1.2,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Flèche entre deux étapes du mini-stepper.
+class _MiniStepArrow extends StatelessWidget {
+  const _MiniStepArrow();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Padding(
+      padding: EdgeInsets.only(top: 4),
+      child: Icon(Icons.chevron_right, size: 18, color: Color(0xFFCBD5E1)),
     );
   }
 }

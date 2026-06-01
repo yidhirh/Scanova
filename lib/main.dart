@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'screens/login_screen.dart';
 import 'database/database_helper.dart';
+import 'theme/app_theme.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -15,6 +16,7 @@ class ScanovaApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Scanova',
+      theme: AppTheme.light(),
       debugShowCheckedModeBanner: false,
       home: const LoginScreen(),
     );

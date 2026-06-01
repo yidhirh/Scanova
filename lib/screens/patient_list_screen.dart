@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../database/database_helper.dart';
 import '../models/patient.dart';
+import '../widgets/app_drawer.dart';
 import 'patient_dossier_screen.dart';
 
 class PatientListScreen extends StatefulWidget {
@@ -75,6 +76,7 @@ class _PatientListScreenState extends State<PatientListScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: _background,
+      drawer: const AppDrawer(),
       appBar: AppBar(
         title: const Text(
           'Patients',

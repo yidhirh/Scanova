@@ -20,7 +20,7 @@ class ChifaScanScreen extends StatefulWidget {
 
 class _ChifaScanScreenState extends State<ChifaScanScreen> {
   static const Color _primaryColor = Color(0xFF2563EB);
-  static const Color _backgroundColor = Color(0xFFFDF6FD);
+  static const Color _backgroundColor = Color(0xFFF8FAFC);
   static const Color _textColor = Color(0xFF0F172A);
 
   final ImagePicker _picker = ImagePicker();
@@ -210,142 +210,72 @@ class _ChifaScanScreenState extends State<ChifaScanScreen> {
     );
   }
 
+  /// Carte compacte d'instructions — titre + texte court + 3 badges qualité.
   Widget _buildGuideCard() {
     return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(22),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(22),
+        borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.06),
-            blurRadius: 18,
-            offset: const Offset(0, 8),
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
           ),
         ],
       ),
       child: Column(
-        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Container(
-            width: 96,
-            height: 96,
-            decoration: BoxDecoration(
-              color: _primaryColor.withValues(alpha: 0.10),
-              shape: BoxShape.circle,
-            ),
-            child: const Icon(
-              Icons.health_and_safety_outlined,
-              color: _primaryColor,
-              size: 52,
-            ),
-          ),
-          const SizedBox(height: 22),
-          const Text(
-            'Capture de la carte Chifa',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: _textColor,
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          const SizedBox(height: 10),
-          Text(
-            'Une seule prise suffit. Le scanner détecte automatiquement les bords de la carte et corrige la perspective.',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: 14,
-              color: Colors.grey[700],
-              height: 1.4,
-            ),
-          ),
-          const SizedBox(height: 24),
-          _buildStep(
-            number: '1',
-            title: 'Scanner la carte',
-            subtitle: 'Pointez vers la carte — les bords sont détectés automatiquement. Ou choisissez depuis la galerie.',
-            icon: Icons.document_scanner,
-          ),
-          const SizedBox(height: 14),
-          _buildStep(
-            number: '2',
-            title: 'Lancer l analyse',
-            subtitle: "L'OCR extrait automatiquement nom, prenom et date.",
-            icon: Icons.auto_awesome,
-          ),
-          const SizedBox(height: 14),
-          _buildStep(
-            number: '3',
-            title: 'Verifier les donnees',
-            subtitle: 'Corrigez si besoin avant de confirmer.',
-            icon: Icons.fact_check_outlined,
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildStep({
-    required String number,
-    required String title,
-    required String subtitle,
-    required IconData icon,
-  }) {
-    return Container(
-      padding: const EdgeInsets.all(13),
-      decoration: BoxDecoration(
-        color: _backgroundColor,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.grey.shade200),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 38,
-            height: 38,
-            decoration: const BoxDecoration(
-              color: _primaryColor,
-              shape: BoxShape.circle,
-            ),
-            child: Center(
-              child: Text(
-                number,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
+          Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: _primaryColor.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(
+                  Icons.health_and_safety_outlined,
+                  color: _primaryColor,
+                  size: 22,
                 ),
               ),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    color: _textColor,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 15,
-                  ),
+              const SizedBox(width: 12),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Carte Chifa',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        color: _textColor,
+                      ),
+                    ),
+                    SizedBox(height: 2),
+                    Text(
+                      'Prenez une photo claire de la carte.',
+                      style: TextStyle(fontSize: 12.5, color: Color(0xFF64748B)),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 3),
-                Text(
-                  subtitle,
-                  style: TextStyle(
-                    color: Colors.grey[600],
-                    fontSize: 13,
-                    height: 1.25,
-                  ),
-                ),
-              ],
-            ),
+              ),
+            ],
           ),
-          const SizedBox(width: 8),
-          Icon(icon, color: _primaryColor, size: 22),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: const [
+              _ScanBadge(icon: Icons.crop_free,  label: 'Carte complète'),
+              _ScanBadge(icon: Icons.wb_sunny,   label: 'Bonne lumière'),
+              _ScanBadge(icon: Icons.block,      label: 'Sans reflet'),
+            ],
+          ),
         ],
       ),
     );
@@ -554,6 +484,40 @@ class _ChifaScanScreenState extends State<ChifaScanScreen> {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// Petit badge réutilisable affiché dans la carte d'instructions compacte.
+class _ScanBadge extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  const _ScanBadge({required this.icon, required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(8, 4, 10, 4),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF1F5F9),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: const Color(0xFF16A34A)),
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: const TextStyle(
+              fontSize: 11.5,
+              fontWeight: FontWeight.w600,
+              color: Color(0xFF334155),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

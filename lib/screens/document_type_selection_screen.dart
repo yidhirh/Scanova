@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../models/document_type.dart';
+import '../widgets/app_drawer.dart';
+import '../widgets/main_nav_scope.dart';
 import 'chifa_scan_screen.dart';
 import 'cni_scan_screen.dart';
 
@@ -23,6 +25,10 @@ class DocumentTypeSelectionScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      // Affiché comme onglet « Scanner » → garde le menu hamburger comme les
+      // autres onglets. Poussé depuis « Nouvelle numérisation » (Accueil) →
+      // pas de MainNavScope dans le contexte, donc pas de drawer (bouton retour).
+      drawer: MainNavScope.maybeOf(context) != null ? const AppDrawer() : null,
       appBar: AppBar(title: const Text('Scanner une carte')),
       body: Padding(
         padding: const EdgeInsets.all(16),

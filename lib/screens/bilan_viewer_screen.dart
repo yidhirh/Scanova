@@ -202,10 +202,19 @@ class _BilanViewerScreenState extends State<BilanViewerScreen> {
           const SizedBox(height: 16),
           _buildPagesSection(pages),
           const SizedBox(height: 20),
+          // Section principale : valeurs détectées par l'OCR
+          _buildValuesSectionHeader(valeurs.length),
+          const SizedBox(height: 10),
           if (valeurs.isEmpty)
-            _buildEmptyHint('Aucune valeur enregistrée pour ce bilan.')
+            _buildValuesEmptyState()
           else
             ...groupes.entries.map((e) => _buildCategorieSection(e.key, e.value)),
+
+          // Section secondaire : texte OCR complet (repliable)
+          if (bilan.texteOcrBrut != null && bilan.texteOcrBrut!.trim().isNotEmpty) ...[
+            const SizedBox(height: 8),
+            _buildOcrRawSection(bilan.texteOcrBrut!),
+          ],
         ],
       ),
     );
@@ -514,17 +523,176 @@ class _BilanViewerScreenState extends State<BilanViewerScreen> {
     );
   }
 
-  Widget _buildEmptyHint(String message) {
+  // ── Section "Valeurs détectées" ───────────────────────────
+
+  /// En-tête de la section principale. Icône science + nombre détecté
+  /// + badge "Détecté automatiquement".
+  Widget _buildValuesSectionHeader(int count) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      child: Row(
+        children: [
+          Container(
+            width: 32, height: 32,
+            decoration: BoxDecoration(
+              color: _primary.withValues(alpha: 0.10),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: const Icon(Icons.science_outlined, color: _primary, size: 18),
+          ),
+          const SizedBox(width: 10),
+          const Expanded(
+            child: Text(
+              'Valeurs détectées',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+                color: Color(0xFF0F172A),
+              ),
+            ),
+          ),
+          if (count > 0)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                color: _primary.withValues(alpha: 0.10),
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.auto_awesome, size: 12, color: _primary),
+                  const SizedBox(width: 4),
+                  Text(
+                    '$count auto',
+                    style: const TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF1D4ED8),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  /// EmptyState propre quand l'OCR n'a remonté aucune valeur exploitable.
+  Widget _buildValuesEmptyState() {
     return Container(
-      padding: const EdgeInsets.all(18),
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 28),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
       ),
-      child: Text(
-        message,
-        textAlign: TextAlign.center,
-        style: TextStyle(color: Colors.grey[500], fontSize: 14),
+      child: Column(
+        children: [
+          Container(
+            width: 56, height: 56,
+            decoration: const BoxDecoration(
+              color: Color(0xFFF1F5F9),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(
+              Icons.science_outlined,
+              color: Color(0xFF94A3B8),
+              size: 28,
+            ),
+          ),
+          const SizedBox(height: 12),
+          const Text(
+            'Aucune valeur biologique détectée automatiquement.',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: Color(0xFF0F172A),
+              height: 1.4,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Vérifiez le texte OCR complet ci-dessous ou recommencez le scan avec une meilleure lumière.',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 12, color: Colors.grey[500], height: 1.4),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── Section secondaire "Texte OCR complet" ───────────────
+
+  /// Affichage repliable du texte brut OCR — discret, en arrière-plan,
+  /// pour les cas où l'utilisateur veut vérifier ce que la machine a lu.
+  Widget _buildOcrRawSection(String rawText) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Theme(
+        // Retire le splash/border par défaut du ExpansionTile.
+        data: Theme.of(context).copyWith(
+          dividerColor: Colors.transparent,
+          splashColor: Colors.transparent,
+        ),
+        child: ExpansionTile(
+          tilePadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
+          childrenPadding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
+          leading: Container(
+            width: 32, height: 32,
+            decoration: BoxDecoration(
+              color: const Color(0xFFF1F5F9),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: const Icon(
+              Icons.text_snippet_outlined,
+              color: Color(0xFF64748B),
+              size: 18,
+            ),
+          ),
+          title: const Text(
+            'Texte OCR complet',
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: Color(0xFF334155),
+            ),
+          ),
+          subtitle: const Text(
+            'Données brutes extraites par le moteur OCR',
+            style: TextStyle(fontSize: 11.5, color: Color(0xFF94A3B8)),
+          ),
+          iconColor: const Color(0xFF64748B),
+          collapsedIconColor: const Color(0xFF94A3B8),
+          children: [
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF8FAFC),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: const Color(0xFFE2E8F0)),
+              ),
+              child: SelectableText(
+                rawText,
+                style: const TextStyle(
+                  fontFamily: 'monospace',
+                  fontSize: 12,
+                  color: Color(0xFF334155),
+                  height: 1.45,
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
