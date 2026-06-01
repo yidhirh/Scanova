@@ -3,7 +3,6 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
 
 import '../models/bilan.dart';
 import '../models/bilan_page.dart';
@@ -35,7 +34,6 @@ class BilanScanScreen extends StatefulWidget {
 class _BilanScanScreenState extends State<BilanScanScreen> {
   static const Color _primary = Color(0xFF2563EB);
 
-  final _picker = ImagePicker();
   final _scannerService = DocumentScannerService();
   final _ocrService = OcrService();
 
@@ -58,15 +56,13 @@ class _BilanScanScreenState extends State<BilanScanScreen> {
     setState(() => _pages.add(scanned));
   }
 
-  /// Galerie : sélection multiple, ajoute toutes les images choisies.
+  /// Galerie : import via ML Kit (détection des bords + recadrage + correction
+  /// de perspective/orientation + amélioration), multi-pages. Les images
+  /// renvoyées sont déjà propres avant OCR et parsing.
   Future<void> _addFromGallery() async {
-    final picked = await _picker.pickMultiImage(
-      imageQuality: 100,
-      maxWidth: 2000,
-      maxHeight: 2500,
-    );
-    if (picked.isEmpty) return;
-    setState(() => _pages.addAll(picked.map((x) => File(x.path))));
+    final files = await _scannerService.scanDocuments();
+    if (files.isEmpty) return;
+    setState(() => _pages.addAll(files));
   }
 
   void _removePage(int index) {

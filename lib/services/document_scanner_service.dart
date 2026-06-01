@@ -39,4 +39,34 @@ class DocumentScannerService {
       scanner.close();
     }
   }
+
+  /// Ouvre ML Kit avec **import galerie activé** (multi-pages). L'utilisateur
+  /// choisit une ou plusieurs images dans l'écran du scanner ; ML Kit applique
+  /// le même pipeline que la caméra (détection des bords, recadrage, correction
+  /// de perspective/orientation, amélioration) et propose la prévisualisation
+  /// éditable. Renvoie toutes les pages traitées dans l'ordre, ou une liste
+  /// vide si l'utilisateur annule / en cas d'erreur.
+  Future<List<File>> scanDocuments({int pageLimit = 10}) async {
+    final scanner = DocumentScanner(
+      options: DocumentScannerOptions(
+        documentFormat: DocumentFormat.jpeg,
+        mode: ScannerMode.filter, // couleur nettoyée, cohérent avec la caméra
+        pageLimit: pageLimit,
+        isGalleryImport: true,
+      ),
+    );
+
+    try {
+      debugPrint('[DocumentScannerService] Ouverture du scanner (import galerie)…');
+      final result = await scanner.scanDocument();
+      final images = result.images;
+      debugPrint('[DocumentScannerService] ${images.length} page(s) importée(s).');
+      return images.map((p) => File(p)).toList();
+    } catch (e) {
+      debugPrint('[DocumentScannerService] Erreur import galerie : $e');
+      return [];
+    } finally {
+      scanner.close();
+    }
+  }
 }

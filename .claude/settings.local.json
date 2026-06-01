@@ -3,7 +3,14 @@
     "allow": [
       "Bash(flutter analyze *)",
       "Bash(flutter pub *)",
-      "Bash(flutter run *)"
+      "Bash(flutter run *)",
+      "WebFetch(domain:api.anthropic.com)",
+      "Bash(mkdir -p design_extract)",
+      "Bash(tar -xzf webfetch-1780315595842-esmurb.bin -C design_extract)",
+      "PowerShell(flutter analyze *)",
+      "Bash(mkdir -p design_extract2)",
+      "Bash(tar -xzf webfetch-1780331234863-8j7ktr.bin -C design_extract2)",
+      "Bash(git rm *)"
     ]
   }
 }
