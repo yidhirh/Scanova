@@ -7,6 +7,7 @@ import '../models/document_page.dart';
 import '../models/bilan.dart';
 import '../models/bilan_page.dart';
 import '../models/valeur_biologique.dart';
+import '../models/user.dart';
 
 class DatabaseHelper {
   static const _databaseName = 'scanova.db';
@@ -16,7 +17,9 @@ class DatabaseHelper {
   //      (déplacés vers les tables pages).
   // v4 : OCR page par page. Ajout `ocr_text` sur `document_pages` et
   //      `bilan_pages` (texte OCR propre à chaque page).
-  static const _databaseVersion = 4;
+  // v5 : authentification locale. Ajout de la table `users` (comptes médecin,
+  //      mot de passe haché).
+  static const _databaseVersion = 5;
 
   DatabaseHelper._privateConstructor();
   static final DatabaseHelper instance = DatabaseHelper._privateConstructor();
@@ -103,6 +106,7 @@ class DatabaseHelper {
 
     await _createBilanTables(db);
     await _createPagesTables(db);
+    await _createUsersTable(db);
   }
 
   /// Migration : appelée uniquement sur une DB existante quand
@@ -220,6 +224,27 @@ class DatabaseHelper {
         await db.execute('ALTER TABLE bilan_pages ADD COLUMN ocr_text TEXT');
       }
     }
+
+    if (oldVersion < 5) {
+      await _createUsersTable(db);
+    }
+  }
+
+  /// Table des comptes médecin (authentification locale, v5).
+  /// `email` est unique et insensible à la casse (COLLATE NOCASE) pour éviter
+  /// les doublons "A@x.com" / "a@x.com". Le mot de passe n'est jamais stocké
+  /// en clair : seuls `password_hash` (SHA-256 salé itéré) et `salt` le sont.
+  Future<void> _createUsersTable(DatabaseExecutor db) async {
+    await db.execute('''
+      CREATE TABLE users (
+        id            INTEGER PRIMARY KEY AUTOINCREMENT,
+        nom_complet   TEXT,
+        email         TEXT NOT NULL UNIQUE COLLATE NOCASE,
+        password_hash TEXT NOT NULL,
+        salt          TEXT NOT NULL,
+        created_at    DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    ''');
   }
 
   /// Création des tables `bilans` et `valeurs_biologiques` (schéma v3, sans
@@ -358,6 +383,42 @@ class DatabaseHelper {
       orderBy: 'nom COLLATE NOCASE ASC',
     );
     return rows.map((r) => Patient.fromMap(r)).toList();
+  }
+
+  // ── users (authentification locale) ─────────────────────────────────────────
+
+  /// Nombre de comptes existants. Sert à distinguer le premier lancement
+  /// (0 compte → écran d'inscription) d'un lancement normal (→ login).
+  Future<int> countUsers() async {
+    final db = await database;
+    final rows = await db.rawQuery('SELECT COUNT(*) AS c FROM users');
+    return Sqflite.firstIntValue(rows) ?? 0;
+  }
+
+  /// Insère un compte médecin et retourne l'id généré.
+  /// L'unicité de l'email est garantie par la contrainte UNIQUE (lève en cas
+  /// de doublon) ; l'appelant ([AuthService.register]) vérifie en amont.
+  Future<int> insertUser(User user) async {
+    final db = await database;
+    return db.insert('users', user.toMap());
+  }
+
+  /// Recherche un compte par email (insensible à la casse via COLLATE NOCASE).
+  Future<User?> getUserByEmail(String email) async {
+    final db = await database;
+    final rows = await db.query(
+      'users',
+      where: 'email = ?',
+      whereArgs: [email],
+      limit: 1,
+    );
+    return rows.isEmpty ? null : User.fromMap(rows.first);
+  }
+
+  Future<User?> getUserById(int id) async {
+    final db = await database;
+    final rows = await db.query('users', where: 'id = ?', whereArgs: [id], limit: 1);
+    return rows.isEmpty ? null : User.fromMap(rows.first);
   }
 
   // ── card_scans ────────────────────────────────────────────────────────────

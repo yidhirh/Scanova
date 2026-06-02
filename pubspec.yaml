@@ -28,6 +28,8 @@ dependencies:
   # Impression / export PDF des documents (multi-pages + texte OCR).
   pdf: ^3.11.1
   printing: ^5.13.3
+  crypto: ^3.0.7
+  shared_preferences: ^2.5.5
 
 
 dev_dependencies:

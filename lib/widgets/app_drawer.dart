@@ -15,6 +15,8 @@ import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
 import '../screens/advanced_search_screen.dart';
+import '../screens/login_screen.dart';
+import '../services/auth_service.dart';
 import 'main_nav_scope.dart';
 
 class AppDrawer extends StatelessWidget {
@@ -30,6 +32,34 @@ class AppDrawer extends StatelessWidget {
     Navigator.push(
       context,
       MaterialPageRoute(builder: (_) => const AdvancedSearchScreen()),
+    );
+  }
+
+  Future<void> _logout(BuildContext context) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadii.xxl)),
+        title: const Text('Se déconnecter ?'),
+        content: const Text('Vous devrez ressaisir votre mot de passe pour revenir.'),
+        actionsPadding: const EdgeInsets.all(16),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Annuler')),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.danger600),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Se déconnecter'),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true) return;
+
+    await AuthService.instance.logout();
+    if (!context.mounted) return;
+    Navigator.of(context, rootNavigator: true).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const LoginScreen()),
+      (route) => false,
     );
   }
 
@@ -94,6 +124,11 @@ class AppDrawer extends StatelessWidget {
               label: 'À propos',
               onTap: () => _openAbout(context),
             ),
+            _DrawerItem(
+              icon: Icons.logout,
+              label: 'Déconnexion',
+              onTap: () => _logout(context),
+            ),
             const Spacer(),
             const Padding(
               padding: EdgeInsets.all(16),
@@ -114,6 +149,11 @@ class _DrawerHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final user = AuthService.instance.currentUser;
+    final subtitle = user == null
+        ? 'Numérisation médicale'
+        : (user.nomComplet.isNotEmpty ? user.nomComplet : user.email);
+
     return Container(
       padding: const EdgeInsets.fromLTRB(20, 20, 20, 18),
       decoration: const BoxDecoration(
@@ -124,24 +164,27 @@ class _DrawerHeader extends StatelessWidget {
         children: [
           const _BrandBadge(size: 48),
           const SizedBox(width: 14),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text(
-                'Scanova',
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.ink900,
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'Scanova',
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.ink900,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                'Numérisation médicale',
-                style: TextStyle(fontSize: 13, color: AppColors.ink500),
-              ),
-            ],
+                const SizedBox(height: 2),
+                Text(
+                  subtitle,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 13, color: AppColors.ink500),
+                ),
+              ],
+            ),
           ),
         ],
       ),

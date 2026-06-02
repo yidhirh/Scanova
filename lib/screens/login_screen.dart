@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import '../services/auth_service.dart';
 import '../widgets/scanova_logo.dart';
 import 'main_navigation_screen.dart';
+import 'signup_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -26,12 +28,6 @@ class _LoginScreenState extends State<LoginScreen> {
   Future<void> _login() async {
     FocusScope.of(context).unfocus();
 
-    setState(() {
-      _isLoading = true;
-    });
-
-    await Future.delayed(const Duration(seconds: 1));
-
     final email = _emailController.text.trim();
     final password = _passwordController.text;
 
@@ -39,30 +35,45 @@ class _LoginScreenState extends State<LoginScreen> {
       r'^[\w\.-]+@([\w-]+\.)+[\w-]{2,4}$',
     );
 
-    final bool isFormValid =
-        email.isNotEmpty && password.isNotEmpty && emailRegex.hasMatch(email) && password.length >= 6;
-
-    if (!mounted) return;
-
-    setState(() { _isLoading = false; });
-
-    if (!isFormValid) {
+    if (email.isEmpty || password.isEmpty || !emailRegex.hasMatch(email)) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text(
-            'Connexion impossible. Veuillez vérifier vos informations.',
-          ),
+          content: Text('Veuillez saisir un email et un mot de passe valides.'),
           backgroundColor: Color(0xFFDC2626),
         ),
       );
       return;
     }
 
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(
-        builder: (context) => const MainNavigationScreen(),
+    setState(() => _isLoading = true);
+    final result = await AuthService.instance.login(email: email, password: password);
+    if (!mounted) return;
+    setState(() => _isLoading = false);
+
+    if (result == AuthResult.success) {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (context) => const MainNavigationScreen()),
+      );
+      return;
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          result == AuthResult.invalidCredentials
+              ? 'Email ou mot de passe incorrect.'
+              : 'Connexion impossible. Réessayez.',
+        ),
+        backgroundColor: const Color(0xFFDC2626),
       ),
+    );
+  }
+
+  void _goToSignup() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const SignupScreen()),
     );
   }
 
@@ -287,6 +298,28 @@ class _LoginScreenState extends State<LoginScreen> {
                               fontWeight: FontWeight.w600,
                             ),
                           ),
+                        ),
+
+                        const SizedBox(height: 4),
+
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Text(
+                              'Pas encore de compte ?',
+                              style: TextStyle(color: Color(0xFF64748B)),
+                            ),
+                            TextButton(
+                              onPressed: _isLoading ? null : _goToSignup,
+                              child: const Text(
+                                'Créer un compte',
+                                style: TextStyle(
+                                  color: Color(0xFF2563EB),
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ],
                     ),
