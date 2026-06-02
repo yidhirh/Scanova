@@ -9,8 +9,10 @@
 //   - Documents : titre / type contiennent la requête, ou le patient matche.
 //   - Bilans    : laboratoire / médecin contiennent la requête, ou le patient.
 //
-// La recherche se lance à la validation (touche « rechercher ») ou au
-// changement de filtre — pas à chaque frappe (elle parcourt la base).
+// La recherche se lance en temps réel à chaque frappe (avec un léger debounce
+// pour ne pas saturer la base), ainsi qu'au changement de filtre.
+
+import 'dart:async';
 
 import 'package:flutter/material.dart';
 
@@ -49,13 +51,24 @@ class _AdvancedSearchScreenState extends State<AdvancedSearchScreen> {
   bool _hasSearched = false;
   List<_Result> _results = const [];
 
+  Timer? _debounce; // anti-rebond de la recherche temps réel
+
   @override
   void dispose() {
+    _debounce?.cancel();
     _controller.dispose();
     super.dispose();
   }
 
   // ── Recherche ─────────────────────────────────────────────
+
+  /// Appelé à chaque frappe : relance la recherche après un court délai
+  /// afin de ne pas parcourir la base à chaque caractère.
+  void _onQueryChanged(String value) {
+    setState(() => _query = value.trim());
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 250), _runSearch);
+  }
 
   Future<void> _runSearch() async {
     final q = _controller.text.trim();
@@ -68,7 +81,6 @@ class _AdvancedSearchScreenState extends State<AdvancedSearchScreen> {
       return;
     }
 
-    FocusScope.of(context).unfocus();
     setState(() {
       _loading = true;
       _hasSearched = true;
@@ -320,8 +332,8 @@ class _AdvancedSearchScreenState extends State<AdvancedSearchScreen> {
       controller: _controller,
       autofocus: true,
       textInputAction: TextInputAction.search,
-      onChanged: (v) => setState(() => _query = v.trim()),
-      onSubmitted: (_) => _runSearch(),
+      onChanged: _onQueryChanged,
+      onSubmitted: (_) => FocusScope.of(context).unfocus(),
       decoration: InputDecoration(
         hintText: 'Nom du patient ou mot-clé…',
         prefixIcon: const Icon(Icons.search),
@@ -330,6 +342,7 @@ class _AdvancedSearchScreenState extends State<AdvancedSearchScreen> {
                 icon: const Icon(Icons.close),
                 tooltip: 'Effacer',
                 onPressed: () {
+                  _debounce?.cancel();
                   _controller.clear();
                   setState(() {
                     _query = '';
