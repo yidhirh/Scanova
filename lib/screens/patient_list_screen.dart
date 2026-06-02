@@ -4,6 +4,7 @@ import '../database/database_helper.dart';
 import '../models/patient.dart';
 import '../widgets/app_drawer.dart';
 import 'patient_dossier_screen.dart';
+import 'patient_manual_form_screen.dart';
 
 class PatientListScreen extends StatefulWidget {
   const PatientListScreen({super.key});
@@ -86,6 +87,13 @@ class _PatientListScreenState extends State<PatientListScreen> {
         foregroundColor: Colors.white,
         elevation: 0,
       ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: _createManualPatient,
+        backgroundColor: _primary,
+        foregroundColor: Colors.white,
+        icon: const Icon(Icons.person_add_alt_1),
+        label: const Text('Nouveau dossier'),
+      ),
       body: Column(
         children: [
           _buildSearchBar(),
@@ -93,6 +101,15 @@ class _PatientListScreenState extends State<PatientListScreen> {
         ],
       ),
     );
+  }
+
+  Future<void> _createManualPatient() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const PatientManualFormScreen()),
+    );
+    // Au retour (un dossier a pu être créé), on rafraîchit la liste.
+    if (mounted) _loadAll();
   }
 
   Widget _buildSearchBar() {

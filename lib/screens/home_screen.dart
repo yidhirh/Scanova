@@ -12,7 +12,6 @@
 //   1. Header : "Bonjour 👋" + accroche + badge "OCR local · Données sécurisées"
 //   2. Action principale : "Nouvelle numérisation" → DocumentTypeSelectionScreen
 //   3. Documents traités récemment : 4 dernières entrées (CNI, Chifa, bilan…)
-//   4. Outils avancés (discret) : OcrScreen + OcrDebugScreen
 //
 // ⚠️ Les valeurs de "Documents traités récemment" sont simulées pour
 // l'instant. Pour les brancher à SQLite, voir le commentaire TODO
@@ -25,8 +24,6 @@ import 'package:flutter/material.dart';
 import '../widgets/app_drawer.dart';
 import 'advanced_search_screen.dart';
 import 'document_type_selection_screen.dart';
-import 'ocr_debug_screen.dart';
-import 'ocr_screen.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -56,7 +53,7 @@ class HomeScreen extends StatelessWidget {
           'Scanova',
           style: TextStyle(fontWeight: FontWeight.w700),
         ),
-        backgroundColor: Colors.white,
+        backgroundColor: _primary,
         foregroundColor: _ink900,
         elevation: 0,
         actions: [
@@ -90,13 +87,6 @@ class HomeScreen extends StatelessWidget {
                   onSeeAll: () {
                     // TODO: ouvrir l'écran "historique" quand il existera
                   },
-                ),
-
-                // 4 ── Outils avancés
-                const _SectionLabel(title: 'Outils avancés'),
-                _ToolsList(
-                  onOcr: () => _open(context, const OcrScreen()),
-                  onDebug: () => _open(context, const OcrDebugScreen()),
                 ),
               ],
             ),
@@ -469,100 +459,6 @@ class _RecentDocRow extends StatelessWidget {
               ),
             ),
             const Icon(Icons.chevron_right, color: HomeScreen._ink400, size: 20),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// Liste discrète d'outils.
-class _ToolsList extends StatelessWidget {
-  final VoidCallback onOcr;
-  final VoidCallback onDebug;
-  const _ToolsList({required this.onOcr, required this.onDebug});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border.all(color: HomeScreen._ink200),
-        borderRadius: BorderRadius.circular(16),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: Column(
-        children: [
-          _ToolRow(
-            icon: Icons.text_snippet_outlined,
-            label: 'OCR simple document médical',
-            sub: "Extraire le texte d'une photo",
-            onTap: onOcr,
-          ),
-          const Divider(height: 1, color: HomeScreen._ink200),
-          _ToolRow(
-            icon: Icons.bug_report_outlined,
-            label: 'Debug OCR bilan',
-            sub: 'Diagnostic du parseur biologique',
-            onTap: onDebug,
-            muted: true,
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ToolRow extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final String? sub;
-  final VoidCallback onTap;
-  final bool muted;
-
-  const _ToolRow({
-    required this.icon,
-    required this.label,
-    required this.onTap,
-    this.sub,
-    this.muted = false,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final iconColor  = muted ? HomeScreen._ink400 : HomeScreen._ink500;
-    final labelColor = muted ? HomeScreen._ink500 : HomeScreen._ink900;
-
-    return InkWell(
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-        child: Row(
-          children: [
-            Icon(icon, color: iconColor, size: 20),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(label,
-                      style: TextStyle(
-                        fontSize: 13.5,
-                        fontWeight: FontWeight.w600,
-                        color: labelColor,
-                      )),
-                  if (sub != null) ...[
-                    const SizedBox(height: 1),
-                    Text(sub!,
-                        style: const TextStyle(
-                          fontSize: 11.5,
-                          color: HomeScreen._ink500,
-                        )),
-                  ],
-                ],
-              ),
-            ),
-            const Icon(Icons.chevron_right, color: HomeScreen._ink400, size: 18),
           ],
         ),
       ),
