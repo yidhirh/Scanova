@@ -659,4 +659,44 @@ class DatabaseHelper {
     print('[DB] deleteBilan → $count ligne(s) supprimée(s) (id=$id)');
     return count;
   }
+
+  // ── historique global (toutes sources, tous patients) ─────────────────────
+
+  /// Retourne les dernières numérisations **toutes sources confondues**
+  /// (cartes scannées, documents médicaux, bilans), du plus récent au plus
+  /// ancien, jointes au nom du patient.
+  ///
+  /// Alimente la section « Documents traités récemment » de la Home et
+  /// l'écran d'historique complet. Une seule requête `UNION ALL` plutôt que
+  /// trois requêtes + fusion en Dart : le tri et la limite sont délégués à
+  /// SQLite (les colonnes `scanned_at` / `created_at` sont au même format
+  /// texte ISO, donc comparables lexicographiquement).
+  ///
+  /// [limit] borne le nombre de lignes (défaut 50). `null` => sans limite.
+  Future<List<Map<String, Object?>>> getRecentHistory({int? limit = 50}) async {
+    final db = await database;
+    final limitClause = limit != null ? 'LIMIT $limit' : '';
+    final rows = await db.rawQuery('''
+      SELECT 'scan' AS kind, cs.id AS id, cs.patient_id AS patient_id,
+             cs.type_carte AS type, NULL AS titre, cs.scanned_at AS ts,
+             p.nom AS nom, p.prenom AS prenom
+        FROM card_scans cs
+        JOIN patients p ON p.id = cs.patient_id
+      UNION ALL
+      SELECT 'document', md.id, md.patient_id,
+             md.type_document, md.titre, md.created_at,
+             p.nom, p.prenom
+        FROM medical_documents md
+        JOIN patients p ON p.id = md.patient_id
+      UNION ALL
+      SELECT 'bilan', b.id, b.patient_id,
+             'bilan', NULL, b.created_at,
+             p.nom, p.prenom
+        FROM bilans b
+        JOIN patients p ON p.id = b.patient_id
+      ORDER BY ts DESC
+      $limitClause
+    ''');
+    return rows;
+  }
 }

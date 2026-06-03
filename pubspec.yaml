@@ -38,10 +38,27 @@ dev_dependencies:
 
   flutter_lints: ^6.0.0
 
+  # Génère les icônes de l'application (Android/iOS) à partir du logo.
+  # Lancer : dart run flutter_launcher_icons
+  flutter_launcher_icons: ^0.14.1
+
 flutter:
 
   uses-material-design: true
   assets:
     - assets/tessdata/
     - assets/tessdata_config.json
+    - assets/images/
+
+# Configuration de l'icône d'application (launcher).
+flutter_launcher_icons:
+  image_path: "assets/images/scanova_logo.png"
+  android: true
+  ios: true
+  remove_alpha_ios: true
+  # Le logo a un fond transparent → on pose un fond blanc pour l'icône
+  # adaptative Android et le retrait d'alpha iOS.
+  background_color_ios: "#FFFFFF"
+  adaptive_icon_background: "#FFFFFF"
+  adaptive_icon_foreground: "assets/images/scanova_logo.png"
 

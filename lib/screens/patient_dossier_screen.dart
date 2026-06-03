@@ -34,6 +34,10 @@ class _PatientDossierScreenState extends State<PatientDossierScreen> {
   bool _isLoading = true;
   String? _error;
 
+  /// Type de document affiché en exclusivité (ex: 'ordonnance', 'bilan').
+  /// `null` = tous les types. Piloté par les cartes de « Répartition ».
+  String? _typeFilter;
+
   @override
   void initState() {
     super.initState();
@@ -124,6 +128,20 @@ class _PatientDossierScreenState extends State<PatientDossierScreen> {
     }
   }
 
+  String _labelForType(String type) {
+    switch (type.toLowerCase()) {
+      case 'ordonnance':    return 'Ordonnances';
+      case 'bilan':
+      case 'analyse':       return 'Bilans biologiques';
+      case 'radio':
+      case 'radiographie':  return 'Radiographies';
+      case 'compte rendu':
+      case 'compte_rendu':  return 'Comptes rendus';
+      case 'autre':         return 'Autres';
+      default:              return _capitalize(type);
+    }
+  }
+
   Color _colorForType(String type) {
     switch (type.toLowerCase()) {
       case 'ordonnance':    return AppColors.docOrdonnance;
@@ -164,6 +182,8 @@ class _PatientDossierScreenState extends State<PatientDossierScreen> {
     final p = _patient;
     if (p == null) return const EmptyState(icon: Icons.person_search, message: 'Patient introuvable.');
 
+    final hasAny = _documents.isNotEmpty || _bilans.isNotEmpty;
+
     return RefreshIndicator(
       onRefresh: _loadData,
       child: ListView(
@@ -190,63 +210,163 @@ class _PatientDossierScreenState extends State<PatientDossierScreen> {
 
           const SizedBox(height: 22),
 
-          // ── Stats par type ────────────────────────────────
+          // ── Répartition par type (bilans inclus) ──────────
+          // Chaque carte est tappable : elle filtre la liste sur son type.
+          // Re-toucher la carte sélectionnée (ou « Tout afficher ») réinitialise.
           const _SectionTitle('Répartition des documents'),
           const SizedBox(height: 10),
-          _documents.isEmpty
-              ? _buildEmptyHint('Aucun document pour ce patient')
-              : _buildStatsRow(),
+          hasAny
+              ? _buildStatsRow()
+              : _buildEmptyHint('Aucun document pour ce patient'),
 
           const SizedBox(height: 22),
 
-          // ── Bilans ────────────────────────────────────────
-          if (_bilans.isNotEmpty) ...[
-            _SectionTitle('Bilans biologiques (${_bilans.length})'),
-            const SizedBox(height: 10),
-            ..._bilans.map(_buildBilanTile),
-            const SizedBox(height: 22),
-          ],
-
-          // ── Documents ─────────────────────────────────────
-          _SectionTitle('Documents (${_documents.length})'),
-          const SizedBox(height: 10),
-          _documents.isEmpty
-              ? _buildEmptyHint('Aucun document')
-              : Column(children: _documents.map(_buildDocumentTile).toList()),
+          // ── Documents groupés par type, filtrables ────────
+          if (hasAny) ..._buildGroupedSections(),
         ],
       ),
     );
   }
 
-  Widget _buildStatsRow() {
+  /// Comptage par type, bilans compris. Les bilans biologiques vivent dans une
+  /// table dédiée (`_bilans`) : on les expose sous le type synthétique 'bilan'.
+  Map<String, int> _typeCounts() {
     final counts = <String, int>{};
     for (final d in _documents) {
+      // Sécurité : un éventuel document hérité de type 'bilan' ne doit pas
+      // entrer en collision avec le groupe synthétique des bilans.
+      if (d.typeDocument.toLowerCase() == 'bilan') continue;
       counts[d.typeDocument] = (counts[d.typeDocument] ?? 0) + 1;
     }
+    if (_bilans.isNotEmpty) counts['bilan'] = _bilans.length;
+    return counts;
+  }
+
+  /// Ordonne les types selon une priorité d'affichage stable, les types
+  /// inattendus étant ajoutés à la fin par ordre alphabétique.
+  List<String> _orderedTypes(Iterable<String> types) {
+    const order = ['ordonnance', 'bilan', 'radio', 'compte rendu', 'autre'];
+    final remaining = types.toSet();
+    final result = [for (final t in order) if (remaining.remove(t)) t];
+    result.addAll(remaining.toList()..sort());
+    return result;
+  }
+
+  /// Filtre effectif : ignore un filtre devenu obsolète (ex: dernier document
+  /// d'un type supprimé) en retombant sur « tous ».
+  String? _effectiveFilter(Map<String, int> counts) =>
+      (_typeFilter != null && counts.containsKey(_typeFilter)) ? _typeFilter : null;
+
+  Widget _buildStatsRow() {
+    final counts = _typeCounts();
+    final types = _orderedTypes(counts.keys);
+    final active = _effectiveFilter(counts);
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       child: Row(
-        children: counts.entries.map((e) {
-          final c = _colorForType(e.key);
-          return Container(
-            margin: const EdgeInsets.only(right: 8),
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-            decoration: BoxDecoration(
-              color: c.withValues(alpha: 0.10),
-              borderRadius: BorderRadius.circular(AppRadii.lg),
-              border: Border.all(color: c.withValues(alpha: 0.30)),
-            ),
-            child: Column(
-              children: [
-                Text('${e.value}',
-                    style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: c, height: 1)),
-                const SizedBox(height: 4),
-                Text(_capitalize(e.key),
-                    style: TextStyle(fontSize: 12, color: c, fontWeight: FontWeight.w600)),
-              ],
+        children: types.map((type) {
+          final c = _colorForType(type);
+          final selected = active == type;
+          return Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: GestureDetector(
+              // Toggle : re-toucher la carte active réinitialise le filtre.
+              onTap: () => setState(() => _typeFilter = selected ? null : type),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 150),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                decoration: BoxDecoration(
+                  color: c.withValues(alpha: selected ? 0.18 : 0.10),
+                  borderRadius: BorderRadius.circular(AppRadii.lg),
+                  border: Border.all(
+                    color: c.withValues(alpha: selected ? 1 : 0.30),
+                    width: selected ? 1.5 : 1,
+                  ),
+                ),
+                child: Column(
+                  children: [
+                    Text('${counts[type]}',
+                        style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: c, height: 1)),
+                    const SizedBox(height: 4),
+                    Text(_labelForType(type),
+                        style: TextStyle(fontSize: 12, color: c, fontWeight: FontWeight.w600)),
+                  ],
+                ),
+              ),
             ),
           );
         }).toList(),
+      ),
+    );
+  }
+
+  /// Sections de documents groupées par type (et filtrées si un type est
+  /// sélectionné via la répartition). Le groupe 'bilan' est alimenté par les
+  /// bilans biologiques, les autres par les documents médicaux du type.
+  List<Widget> _buildGroupedSections() {
+    final counts = _typeCounts();
+    final active = _effectiveFilter(counts);
+    final types = active != null
+        ? [active]
+        : _orderedTypes(counts.keys);
+
+    final widgets = <Widget>[];
+
+    // Bandeau de filtre actif avec réinitialisation.
+    if (active != null) {
+      widgets.add(_buildFilterBanner(active));
+      widgets.add(const SizedBox(height: 14));
+    }
+
+    for (final type in types) {
+      widgets.add(_SectionTitle('${_labelForType(type)} (${counts[type]})'));
+      widgets.add(const SizedBox(height: 10));
+      if (type == 'bilan') {
+        widgets.addAll(_bilans.map(_buildBilanTile));
+      } else {
+        widgets.addAll(
+          _documents
+              .where((d) => d.typeDocument == type)
+              .map(_buildDocumentTile),
+        );
+      }
+      widgets.add(const SizedBox(height: 22));
+    }
+    return widgets;
+  }
+
+  /// Bandeau indiquant le filtre actif + bouton « Tout afficher ».
+  Widget _buildFilterBanner(String type) {
+    final c = _colorForType(type);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: c.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(AppRadii.lg),
+        border: Border.all(color: c.withValues(alpha: 0.30)),
+      ),
+      child: Row(
+        children: [
+          Icon(_iconForType(type), size: 18, color: c),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text('Filtré : ${_labelForType(type)}',
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: c)),
+          ),
+          GestureDetector(
+            onTap: () => setState(() => _typeFilter = null),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.close, size: 16, color: AppColors.ink500),
+                const SizedBox(width: 4),
+                Text('Tout afficher',
+                    style: const TextStyle(
+                        fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.ink500)),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

@@ -1,35 +1,16 @@
 import 'package:flutter/material.dart';
-import 'screens/login_screen.dart';
-import 'screens/signup_screen.dart';
-import 'screens/main_navigation_screen.dart';
-import 'database/database_helper.dart';
-import 'services/auth_service.dart';
+import 'screens/splash_screen.dart';
 import 'theme/app_theme.dart';
 
-void main() async {
+void main() {
   WidgetsFlutterBinding.ensureInitialized();
-  await DatabaseHelper.instance.database;
-
-  // Écran de démarrage :
-  //   - session active (« rester connecté ») → on entre directement dans l'app ;
-  //   - aucun compte (premier lancement)     → écran d'inscription ;
-  //   - sinon                                 → écran de connexion.
-  final auth = AuthService.instance;
-  final Widget home;
-  if (await auth.tryRestoreSession()) {
-    home = const MainNavigationScreen();
-  } else if (await auth.hasAnyUser()) {
-    home = const LoginScreen();
-  } else {
-    home = const SignupScreen();
-  }
-
-  runApp(ScanovaApp(home: home));
+  // L'initialisation (base de données, restauration de session) est réalisée
+  // par SplashScreen pendant que l'animation de démarrage se joue.
+  runApp(const ScanovaApp());
 }
 
 class ScanovaApp extends StatelessWidget {
-  final Widget home;
-  const ScanovaApp({super.key, required this.home});
+  const ScanovaApp({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -37,7 +18,7 @@ class ScanovaApp extends StatelessWidget {
       title: 'Scanova',
       theme: AppTheme.light(),
       debugShowCheckedModeBanner: false,
-      home: home,
+      home: const SplashScreen(),
     );
   }
 }
