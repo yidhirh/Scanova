@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
-import 'screens/login_screen.dart';
-import 'database/database_helper.dart';
+import 'screens/splash_screen.dart';
 import 'theme/app_theme.dart';
 
-void main() async {
+void main() {
   WidgetsFlutterBinding.ensureInitialized();
-  await DatabaseHelper.instance.database;
+  // L'initialisation (base de données, restauration de session) est réalisée
+  // par SplashScreen pendant que l'animation de démarrage se joue.
   runApp(const ScanovaApp());
 }
 
@@ -18,7 +18,7 @@ class ScanovaApp extends StatelessWidget {
       title: 'Scanova',
       theme: AppTheme.light(),
       debugShowCheckedModeBanner: false,
-      home: const LoginScreen(),
+      home: const SplashScreen(),
     );
   }
 }

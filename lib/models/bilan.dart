@@ -43,6 +43,32 @@ class Bilan {
     this.pages,
   });
 
+  Bilan copyWith({
+    int? id,
+    int? patientId,
+    DateTime? dateExamen,
+    String? laboratoire,
+    String? medecinPrescripteur,
+    String? numeroDossier,
+    String? texteOcrBrut,
+    DateTime? createdAt,
+    List<ValeurBiologique>? valeurs,
+    List<BilanPage>? pages,
+  }) {
+    return Bilan(
+      id: id ?? this.id,
+      patientId: patientId ?? this.patientId,
+      dateExamen: dateExamen ?? this.dateExamen,
+      laboratoire: laboratoire ?? this.laboratoire,
+      medecinPrescripteur: medecinPrescripteur ?? this.medecinPrescripteur,
+      numeroDossier: numeroDossier ?? this.numeroDossier,
+      texteOcrBrut: texteOcrBrut ?? this.texteOcrBrut,
+      createdAt: createdAt ?? this.createdAt,
+      valeurs: valeurs ?? this.valeurs,
+      pages: pages ?? this.pages,
+    );
+  }
+
   Map<String, dynamic> toMap() {
     return {
       if (id != null) 'id': id,

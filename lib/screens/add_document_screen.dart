@@ -5,16 +5,24 @@ import 'package:path_provider/path_provider.dart';
 import 'package:flutter/material.dart';
 
 import '../database/database_helper.dart';
+import '../models/bilan.dart';
+import '../models/bilan_page.dart';
 import '../models/document_page.dart';
 import '../models/medical_document.dart';
+import '../models/patient.dart';
+import '../services/bilan_parser.dart';
 import '../services/document_scanner_service.dart';
 import '../services/ocr_service.dart';
-import 'bilan_scan_screen.dart';
+import '../widgets/patient_picker_sheet.dart';
+import 'bilan_form_screen.dart';
 
 class AddDocumentScreen extends StatefulWidget {
-  final int patientId;
+  /// Dossier patient cible. `null` quand l'écran est ouvert depuis la Home
+  /// (« Ajouter un document ») : le médecin scanne d'abord, puis choisit le
+  /// patient via le sélecteur intégré au formulaire.
+  final int? patientId;
 
-  const AddDocumentScreen({super.key, required this.patientId});
+  const AddDocumentScreen({super.key, this.patientId});
 
   @override
   State<AddDocumentScreen> createState() => _AddDocumentScreenState();
@@ -50,6 +58,17 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
   String _selectedType = 'ordonnance';
   bool _isScanning = false;
   bool _isSaving = false;
+
+  /// Patient choisi via le sélecteur quand l'écran est ouvert sans
+  /// `widget.patientId` (flux Home). `null` tant qu'aucun n'est sélectionné.
+  Patient? _selectedPatient;
+
+  /// Id du dossier cible : celui passé en paramètre (flux dossier patient) ou,
+  /// à défaut, celui du patient choisi dans le formulaire (flux Home).
+  int? get _effectivePatientId => widget.patientId ?? _selectedPatient?.id;
+
+  /// `true` si le médecin doit choisir le patient lui-même (flux Home).
+  bool get _needsPatientPicker => widget.patientId == null;
 
   /// Texte OCR concaténé dans l'ordre d'affichage des pages.
   String get _ocrText {
@@ -161,19 +180,108 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
     });
   }
 
-  /// Le bilan biologique a son propre flux multi-page : on délègue à
-  /// [BilanScanScreen] (capture N pages → OCR + parsing → formulaire). Au
-  /// retour avec succès, on remonte `true` jusqu'au dossier patient sans
-  /// laisser cet écran à moitié rempli visible.
-  Future<void> _openBilanScan() async {
-    final ok = await Navigator.push<bool>(
-      context,
-      MaterialPageRoute(
-        builder: (_) => BilanScanScreen(patientId: widget.patientId),
-      ),
-    );
-    if (!mounted) return;
-    if (ok == true) Navigator.pop(context, true);
+  /// Ouvre le sélecteur de dossier patient (flux Home). Retourne `true` si un
+  /// patient est désormais sélectionné, `false` si l'utilisateur a annulé.
+  Future<bool> _pickPatient() async {
+    final patient = await PatientPickerSheet.show(context);
+    if (patient == null || !mounted) return false;
+    setState(() => _selectedPatient = patient);
+    return true;
+  }
+
+  /// Analyse d'un bilan biologique — partage le MÊME formulaire de capture que
+  /// les autres types (pages, OCR page par page déjà effectué) ; seule la fin
+  /// du flux diffère : au lieu d'un simple enregistrement, on concatène l'OCR,
+  /// on parse les valeurs biologiques ([BilanParser]) et on route vers le
+  /// formulaire de correction [BilanFormScreen].
+  ///
+  /// Point critique (cf. BilanScanScreen) : le parsing se fait sur le texte
+  /// concaténé de TOUTES les pages dans l'ordre, jamais page par page — une
+  /// section (ex: BIOCHIMIE) peut s'étaler sur deux pages.
+  Future<void> _analyzeBilan() async {
+    if (_pages.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Veuillez d\'abord ajouter au moins une page du bilan.'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    // Flux Home : aucun dossier imposé → on exige un patient cible.
+    if (_effectivePatientId == null) {
+      final picked = await _pickPatient();
+      if (!picked) return;
+    }
+    final patientId = _effectivePatientId!;
+
+    setState(() => _isSaving = true);
+
+    try {
+      final dateIso = _dateController.text.trim().isNotEmpty
+          ? _toIsoDate(_dateController.text.trim())
+          : null;
+
+      // Persiste chaque page (sous-dossier `bilans/`) et réutilise l'OCR déjà
+      // extrait à l'ajout. Chaque page conserve son propre texte pour la
+      // visionneuse ; la concaténation alimente le parser.
+      final bilanPages = <BilanPage>[];
+      for (var i = 0; i < _pages.length; i++) {
+        final tempPath = _pages[i].path;
+        final permanentPath = await _persistImage(_pages[i], subdir: 'bilans', index: i);
+        final pageText = _ocrByPath[tempPath];
+        bilanPages.add(
+          BilanPage(
+            bilanId: 0,
+            pageNumber: i + 1,
+            filePath: permanentPath,
+            ocrText: (pageText != null && pageText.isNotEmpty) ? pageText : null,
+          ),
+        );
+      }
+
+      final texteConcatene = _ocrText;
+      Bilan? initialBilan = texteConcatene.isNotEmpty
+          ? BilanParser.parse(texteConcatene, patientId)
+          : null;
+
+      // La date saisie dans le formulaire prime sur celle devinée par l'OCR.
+      if (dateIso != null) {
+        final parsed = DateTime.tryParse(dateIso);
+        if (parsed != null) {
+          initialBilan = (initialBilan ?? Bilan(patientId: patientId))
+              .copyWith(dateExamen: parsed);
+        }
+      }
+
+      if (!mounted) return;
+      final bilanId = await Navigator.push<int>(
+        context,
+        MaterialPageRoute(
+          builder: (_) => BilanFormScreen(
+            patientId: patientId,
+            initialBilan: initialBilan,
+            pages: bilanPages,
+          ),
+        ),
+      );
+
+      if (!mounted) return;
+      // Bilan enregistré → on remonte au dossier patient (rafraîchissement).
+      if (bilanId != null) Navigator.pop(context, true);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Erreur : $e'),
+          backgroundColor: Colors.red,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
+    }
   }
 
   Future<void> _pickDate() async {
@@ -202,7 +310,7 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
   /// l'unicité du nom même si plusieurs pages sont copiées dans la même ms.
   Future<String> _persistImage(File tempFile, {required String subdir, required int index}) async {
     final appDir = await getApplicationDocumentsDirectory();
-    final destDir = Directory(p.join(appDir.path, subdir, '${widget.patientId}'));
+    final destDir = Directory(p.join(appDir.path, subdir, '$_effectivePatientId'));
     await destDir.create(recursive: true);
     final ext = p.extension(tempFile.path).isNotEmpty ? p.extension(tempFile.path) : '.jpg';
     final fileName = '${DateTime.now().millisecondsSinceEpoch}_$index$ext';
@@ -223,6 +331,12 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
     }
 
     if (!_formKey.currentState!.validate()) return;
+
+    // Flux Home : aucun dossier n'est imposé → on exige un patient cible.
+    if (_effectivePatientId == null) {
+      final picked = await _pickPatient();
+      if (!picked) return;
+    }
 
     setState(() => _isSaving = true);
 
@@ -254,7 +368,7 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
       // `documentId: 0` est un placeholder ; la DAO l'écrase avec l'id généré.
       await DatabaseHelper.instance.insertMedicalDocument(
         MedicalDocument(
-          patientId: widget.patientId,
+          patientId: _effectivePatientId!,
           typeDocument: _selectedType,
           titre: _titreController.text.trim(),
           description: ocr.isNotEmpty ? ocr : null,
@@ -299,68 +413,113 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
           // Le bilan a un flux multi-page dédié : on masque les champs
           // génériques (pages, titre, date) — redondants car BilanFormScreen
           // gère déjà date/labo et le titre est dérivable.
-          children: _selectedType == 'bilan'
-              ? [
-                  _buildTypeSelector(),
-                  const SizedBox(height: 20),
-                  _buildBilanScanCard(),
-                ]
-              : [
-                  _buildPagesSection(),
-                  const SizedBox(height: 20),
-                  _buildTypeSelector(),
-                  const SizedBox(height: 16),
-                  _buildTitreField(),
-                  const SizedBox(height: 16),
-                  _buildDateField(),
-                  const SizedBox(height: 28),
-                  _buildSaveButton(),
-                ],
+          children: [
+            // Flux Home : sélecteur de dossier patient en tête de formulaire.
+            if (_needsPatientPicker) ...[
+              _buildPatientSelector(),
+              const SizedBox(height: 20),
+            ],
+            // Même formulaire de capture pour TOUS les types (harmonisé) :
+            // boutons Caméra/Galerie + liste de pages, puis sélecteur de type.
+            _buildPagesSection(),
+            const SizedBox(height: 20),
+            _buildTypeSelector(),
+            const SizedBox(height: 16),
+            // Le bilan est auto-nommé (« Bilan du … ») → on masque le titre,
+            // seul champ qui n'a pas de sens pour ce type.
+            if (_selectedType != 'bilan') ...[
+              _buildTitreField(),
+              const SizedBox(height: 16),
+            ],
+            _buildDateField(),
+            const SizedBox(height: 28),
+            _buildPrimaryButton(),
+          ],
         ),
       ),
     );
   }
 
-  /// Carte d'entrée du flux bilan multi-page (remplace la section générique
-  /// quand le type "bilan" est sélectionné).
-  Widget _buildBilanScanCard() {
-    return GestureDetector(
-      onTap: _openBilanScan,
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 16),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: _primary, width: 1.5),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.04),
-              blurRadius: 10,
-              offset: const Offset(0, 4),
-            ),
-          ],
+  /// Sélecteur de dossier patient (flux Home uniquement). Affiche le patient
+  /// choisi ou une invite à en choisir un. Touchable pour (re)ouvrir la feuille.
+  Widget _buildPatientSelector() {
+    final patient = _selectedPatient;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Dossier patient',
+          style: TextStyle(
+            fontWeight: FontWeight.w600,
+            fontSize: 14,
+            color: Color(0xFF374151),
+          ),
         ),
-        child: Column(
-          children: [
-            const Icon(Icons.document_scanner_outlined, size: 48, color: _primary),
-            const SizedBox(height: 12),
-            const Text(
-              'Scanner le bilan (multi-page)',
-              style: TextStyle(
-                color: _primary,
-                fontWeight: FontWeight.w600,
-                fontSize: 15,
+        const SizedBox(height: 10),
+        Material(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(12),
+            onTap: _isSaving ? null : _pickPatient,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: patient == null ? Colors.grey.shade300 : _primary,
+                  width: patient == null ? 1 : 1.5,
+                ),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    patient == null ? Icons.person_search : Icons.person,
+                    color: patient == null ? Colors.grey : _primary,
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: patient == null
+                        ? Text(
+                            'Choisir le dossier patient',
+                            style: TextStyle(
+                              fontSize: 15,
+                              color: Colors.grey[600],
+                            ),
+                          )
+                        : Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                '${patient.nom} ${patient.prenom}',
+                                style: const TextStyle(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w600,
+                                  color: Color(0xFF0F172A),
+                                ),
+                              ),
+                              if (patient.age != null)
+                                Text(
+                                  '${patient.age} ans',
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    color: Colors.grey[500],
+                                  ),
+                                ),
+                            ],
+                          ),
+                  ),
+                  Icon(
+                    patient == null ? Icons.chevron_right : Icons.edit_outlined,
+                    color: patient == null ? Colors.grey : _primary,
+                    size: 20,
+                  ),
+                ],
               ),
             ),
-            const SizedBox(height: 6),
-            Text(
-              'Caméra page par page ou import depuis la galerie',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
-            ),
-          ],
+          ),
         ),
-      ),
+      ],
     );
   }
 
@@ -601,7 +760,9 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
       readOnly: true,
       onTap: _pickDate,
       decoration: InputDecoration(
-        labelText: 'Date du document (optionnel)',
+        labelText: _selectedType == 'bilan'
+            ? 'Date de l\'examen (optionnel)'
+            : 'Date du document (optionnel)',
         hintText: 'JJ/MM/AAAA',
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
         prefixIcon: const Icon(Icons.calendar_today_outlined),
@@ -615,22 +776,31 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
     );
   }
 
-  Widget _buildSaveButton() {
+  /// Bouton d'action final, adapté au type : « Analyser le bilan » (lance
+  /// l'extraction des valeurs biologiques) pour un bilan, sinon « Enregistrer
+  /// le document ». Même style pour rester harmonieux.
+  Widget _buildPrimaryButton() {
+    final isBilan = _selectedType == 'bilan';
     final n = _pages.length;
+    final suffix = n > 1 ? ' ($n pages)' : '';
+
+    final String label;
+    if (isBilan) {
+      label = _isSaving ? 'Analyse en cours…' : 'Analyser le bilan$suffix';
+    } else {
+      label = _isSaving ? 'Enregistrement…' : 'Enregistrer le document$suffix';
+    }
+
     return ElevatedButton.icon(
-      onPressed: _isSaving || _isScanning ? null : _save,
+      onPressed: _isSaving || _isScanning ? null : (isBilan ? _analyzeBilan : _save),
       icon: _isSaving
           ? const SizedBox(
               width: 20,
               height: 20,
               child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
             )
-          : const Icon(Icons.save_outlined),
-      label: Text(
-        _isSaving
-            ? 'Enregistrement…'
-            : 'Enregistrer le document${n > 1 ? ' ($n pages)' : ''}',
-      ),
+          : Icon(isBilan ? Icons.science_outlined : Icons.save_outlined),
+      label: Text(label),
       style: ElevatedButton.styleFrom(
         backgroundColor: _primary,
         foregroundColor: Colors.white,

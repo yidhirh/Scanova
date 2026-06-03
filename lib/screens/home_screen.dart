@@ -11,21 +11,27 @@
 // Sections :
 //   1. Header : "Bonjour 👋" + accroche + badge "OCR local · Données sécurisées"
 //   2. Action principale : "Nouvelle numérisation" → DocumentTypeSelectionScreen
-//   3. Documents traités récemment : 4 dernières entrées (CNI, Chifa, bilan…)
+//   3. Documents traités récemment : 4 dernières entrées (CNI, Chifa, bilan…),
+//      chargées depuis SQLite via DatabaseHelper.getRecentHistory.
 //
-// ⚠️ Les valeurs de "Documents traités récemment" sont simulées pour
-// l'instant. Pour les brancher à SQLite, voir le commentaire TODO
-// dans _RecentDocsCard plus bas.
-//
-// Aucune route métier modifiée. Aucun service OCR / parser / DAO touché.
+// L'historique est rechargé : au premier affichage, à chaque retour sur
+// l'onglet Accueil (via MainNavScope), après le flux de numérisation, et par
+// pull-to-refresh.
 
 import 'package:flutter/material.dart';
 
+import '../database/database_helper.dart';
+import '../models/history_entry.dart';
 import '../widgets/app_drawer.dart';
+import '../widgets/history_tile.dart';
+import '../widgets/main_nav_scope.dart';
+import 'add_document_screen.dart';
 import 'advanced_search_screen.dart';
 import 'document_type_selection_screen.dart';
+import 'history_screen.dart';
+import 'patient_dossier_screen.dart';
 
-class HomeScreen extends StatelessWidget {
+class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
   // ── Palette locale ──
@@ -36,62 +42,142 @@ class HomeScreen extends StatelessWidget {
   static const Color _ink900      = Color(0xFF0F172A);
   static const Color _ink700      = Color(0xFF334155);
   static const Color _ink500      = Color(0xFF64748B);
-  static const Color _ink400      = Color(0xFF94A3B8);
   static const Color _ink200      = Color(0xFFE2E8F0);
 
-  void _open(BuildContext context, Widget screen) {
-    Navigator.push(context, MaterialPageRoute(builder: (_) => screen));
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  /// Nombre d'entrées affichées dans l'aperçu de la Home.
+  static const int _previewCount = 4;
+
+  List<HistoryEntry> _recent = const [];
+  bool _loading = true;
+  String? _error;
+
+  /// Dernier index d'onglet observé, pour ne recharger que lorsqu'on
+  /// (re)devient l'onglet Accueil (index 0).
+  int? _lastTabIndex;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadRecent();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // MainNavScope notifie via updateShouldNotify quand l'onglet change.
+    // On recharge dès qu'on revient sur l'Accueil (ex: après un scan fait
+    // depuis l'onglet "Scanner"), pour refléter les nouvelles numérisations.
+    final index = MainNavScope.maybeOf(context)?.currentIndex;
+    if (index != null && index != _lastTabIndex) {
+      if (index == 0 && _lastTabIndex != null) {
+        _loadRecent();
+      }
+      _lastTabIndex = index;
+    }
+  }
+
+  Future<void> _loadRecent() async {
+    try {
+      final rows = await DatabaseHelper.instance.getRecentHistory(limit: _previewCount);
+      if (!mounted) return;
+      setState(() {
+        _recent = rows.map((r) => HistoryEntry.fromMap(r)).toList();
+        _loading = false;
+        _error = null;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = e.toString();
+        _loading = false;
+      });
+    }
+  }
+
+  Future<void> _open(BuildContext context, Widget screen) async {
+    await Navigator.push(context, MaterialPageRoute(builder: (_) => screen));
+    // Au retour (un scan a pu ajouter une entrée), on rafraîchit l'historique.
+    if (mounted) _loadRecent();
+  }
+
+  void _openEntry(HistoryEntry e) {
+    _open(context, PatientDossierScreen(patientId: e.patientId));
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: _bg,
+      backgroundColor: HomeScreen._bg,
       drawer: const AppDrawer(),
       appBar: AppBar(
         title: const Text(
           'Scanova',
           style: TextStyle(fontWeight: FontWeight.w700),
         ),
-        backgroundColor: _primary,
-        foregroundColor: _ink900,
+        backgroundColor: HomeScreen._primary,
+        foregroundColor: HomeScreen._ink900,
+        // Hamburger (leading) en blanc.
+        iconTheme: const IconThemeData(color: Colors.white),
         elevation: 0,
         actions: [
           IconButton(
-            icon: const Icon(Icons.search, color: _ink700),
+            icon: const Icon(Icons.search, color: Colors.white),
             tooltip: 'Recherche avancée',
             onPressed: () => _open(context, const AdvancedSearchScreen()),
           ),
           const SizedBox(width: 4),
         ],
       ),
-      body: ListView(
-        padding: EdgeInsets.zero,
-        children: [
-          // 1 ── HEADER ─────────────────────────────────────
-          _buildHeader(),
+      body: RefreshIndicator(
+        onRefresh: _loadRecent,
+        child: ListView(
+          padding: EdgeInsets.zero,
+          children: [
+            // 1 ── HEADER ─────────────────────────────────────
+            _buildHeader(),
 
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                // 2 ── Action principale
-                _PrimaryActionCard(
-                  onTap: () => _open(context, const DocumentTypeSelectionScreen()),
-                ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // 2 ── Action principale
+                  _PrimaryActionCard(
+                    onTap: () => _open(context, const DocumentTypeSelectionScreen()),
+                  ),
 
-                // 3 ── Documents traités récemment
-                const _SectionLabel(title: 'Documents traités récemment'),
-                _RecentDocsCard(
-                  onSeeAll: () {
-                    // TODO: ouvrir l'écran "historique" quand il existera
-                  },
-                ),
-              ],
+                  const SizedBox(height: 12),
+
+                  // 2bis ── Ajouter un document à un dossier patient
+                  // (scan d'une ordonnance / bilan / compte rendu… puis choix
+                  // du dossier patient cible).
+                  _SecondaryActionCard(
+                    icon: Icons.note_add_outlined,
+                    title: 'Ajouter un document',
+                    subtitle: 'Scanner une ordonnance, un bilan ou un compte rendu et le classer dans un dossier',
+                    onTap: () => _open(context, const AddDocumentScreen()),
+                  ),
+
+                  // 3 ── Documents traités récemment
+                  const _SectionLabel(title: 'Documents traités récemment'),
+                  _RecentDocsCard(
+                    entries: _recent,
+                    loading: _loading,
+                    error: _error,
+                    onTapEntry: _openEntry,
+                    onSeeAll: () => _open(context, const HistoryScreen()),
+                    onRetry: _loadRecent,
+                  ),
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -104,7 +190,7 @@ class HomeScreen extends StatelessWidget {
       decoration: const BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topCenter, end: Alignment.bottomCenter,
-          colors: [Color(0xFFEAF2FE), _bg],
+          colors: [Color(0xFFEAF2FE), HomeScreen._bg],
         ),
       ),
       child: Stack(
@@ -114,14 +200,14 @@ class HomeScreen extends StatelessWidget {
             top: -90, right: -40,
             child: _RadialBlob(
               size: 180,
-              color: _primary.withValues(alpha: 0.18),
+              color: HomeScreen._primary.withValues(alpha: 0.18),
             ),
           ),
           Positioned(
             bottom: -60, left: -30,
             child: _RadialBlob(
               size: 120,
-              color: _success.withValues(alpha: 0.12),
+              color: HomeScreen._success.withValues(alpha: 0.12),
             ),
           ),
           Column(
@@ -133,26 +219,26 @@ class HomeScreen extends StatelessWidget {
                   TextSpan(text: '👋'),
                 ]),
                 style: TextStyle(
-                  fontSize: 24, fontWeight: FontWeight.w700, color: _ink900,
+                  fontSize: 24, fontWeight: FontWeight.w700, color: HomeScreen._ink900,
                 ),
               ),
               const SizedBox(height: 4),
               const Text(
                 'Centre de numérisation médicale',
-                style: TextStyle(fontSize: 14, color: _ink500, height: 1.4),
+                style: TextStyle(fontSize: 14, color: HomeScreen._ink500, height: 1.4),
               ),
               const SizedBox(height: 14),
               Container(
                 padding: const EdgeInsets.fromLTRB(8, 5, 10, 5),
                 decoration: BoxDecoration(
-                  color: _primary.withValues(alpha: 0.10),
-                  border: Border.all(color: _primary.withValues(alpha: 0.22)),
+                  color: HomeScreen._primary.withValues(alpha: 0.10),
+                  border: Border.all(color: HomeScreen._primary.withValues(alpha: 0.22)),
                   borderRadius: BorderRadius.circular(999),
                 ),
                 child: const Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.shield_outlined, size: 14, color: _primary),
+                    Icon(Icons.shield_outlined, size: 14, color: HomeScreen._primary),
                     SizedBox(width: 6),
                     Text(
                       'OCR local · Données sécurisées',
@@ -306,32 +392,103 @@ class _PrimaryActionCard extends StatelessWidget {
   }
 }
 
-/// Liste des derniers documents traités (CNI, Chifa, bilan, ordonnance…).
-/// ⚠️ Données simulées. Pour brancher au DAO, requête type :
-///   SELECT type_carte AS type, titre AS title, p.nom || ' ' || p.prenom AS patient,
-///          created_at
-///     FROM card_scans cs JOIN patients p ON p.id = cs.patient_id
-///     UNION ALL
-///   SELECT type_document, titre, p.nom || ' ' || p.prenom, created_at
-///     FROM medical_documents md JOIN patients p ON p.id = md.patient_id
-///     ORDER BY created_at DESC LIMIT 5;
-class _RecentDocsCard extends StatelessWidget {
-  final VoidCallback onSeeAll;
-  const _RecentDocsCard({required this.onSeeAll});
+/// Carte d'action secondaire — fond blanc, icône en pastille bleue.
+/// Utilisée pour « Ajouter un document » (scan + classement dans un dossier).
+class _SecondaryActionCard extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final VoidCallback onTap;
+
+  const _SecondaryActionCard({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
-    const items = <_RecentDocItem>[
-      _RecentDocItem(type: 'chifa',      title: 'Carte Chifa',
-                     patient: 'Benali Salim',   time: 'il y a 4 min'),
-      _RecentDocItem(type: 'bilan',      title: 'Bilan biologique · 8 valeurs',
-                     patient: 'Djebbar Meriem', time: 'il y a 27 min'),
-      _RecentDocItem(type: 'cni',        title: "Carte d'identité",
-                     patient: 'Kaci Amine',     time: 'il y a 1 h'),
-      _RecentDocItem(type: 'ordonnance', title: 'Ordonnance Dr. Saidi',
-                     patient: 'Hadji Omar',     time: 'il y a 3 h'),
-    ];
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(18),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(18),
+        onTap: onTap,
+        child: Ink(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: HomeScreen._ink200),
+            boxShadow: [
+              BoxShadow(
+                color: HomeScreen._ink900.withValues(alpha: 0.05),
+                blurRadius: 10, offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              children: [
+                Container(
+                  width: 48, height: 48,
+                  decoration: BoxDecoration(
+                    color: HomeScreen._primary.withValues(alpha: 0.10),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: Icon(icon, color: HomeScreen._primary, size: 24),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(title,
+                          style: const TextStyle(
+                              color: HomeScreen._ink900,
+                              fontSize: 15.5,
+                              fontWeight: FontWeight.w700)),
+                      const SizedBox(height: 2),
+                      Text(subtitle,
+                          style: const TextStyle(
+                              color: HomeScreen._ink500,
+                              fontSize: 12.5, height: 1.35)),
+                    ],
+                  ),
+                ),
+                const Icon(Icons.arrow_forward, color: HomeScreen._primary, size: 20),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
 
+/// Liste des derniers documents traités (CNI, Chifa, bilan, ordonnance…),
+/// alimentée par [DatabaseHelper.getRecentHistory]. Gère les états
+/// chargement / erreur / vide / liste.
+class _RecentDocsCard extends StatelessWidget {
+  final List<HistoryEntry> entries;
+  final bool loading;
+  final String? error;
+  final void Function(HistoryEntry) onTapEntry;
+  final VoidCallback onSeeAll;
+  final VoidCallback onRetry;
+
+  const _RecentDocsCard({
+    required this.entries,
+    required this.loading,
+    required this.error,
+    required this.onTapEntry,
+    required this.onSeeAll,
+    required this.onRetry,
+  });
+
+  @override
+  Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
@@ -344,124 +501,93 @@ class _RecentDocsCard extends StatelessWidget {
         ],
       ),
       clipBehavior: Clip.antiAlias,
-      child: Column(
-        children: [
-          for (int i = 0; i < items.length; i++) ...[
-            if (i > 0) const Divider(height: 1, color: HomeScreen._ink200),
-            _RecentDocRow(item: items[i]),
-          ],
-          Material(
-            color: HomeScreen._bg,
-            child: InkWell(
-              onTap: onSeeAll,
-              child: Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(vertical: 12),
-                decoration: const BoxDecoration(
-                  border: Border(top: BorderSide(color: HomeScreen._ink200)),
-                ),
-                child: const Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(
-                      "Voir tout l'historique",
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
-                        color: HomeScreen._primary,
-                      ),
-                    ),
-                    SizedBox(width: 6),
-                    Icon(Icons.arrow_forward, size: 16, color: HomeScreen._primary),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
+      child: _buildContent(),
     );
   }
-}
 
-class _RecentDocItem {
-  final String type;     // 'cni' | 'chifa' | 'bilan' | 'ordonnance' | 'radio'
-  final String title;
-  final String patient;
-  final String time;
-  const _RecentDocItem({
-    required this.type,
-    required this.title,
-    required this.patient,
-    required this.time,
-  });
-}
-
-class _RecentDocRow extends StatelessWidget {
-  final _RecentDocItem item;
-  const _RecentDocRow({required this.item});
-
-  /// Mapping type → (icône, couleur) — cohérent avec les autres écrans.
-  ({IconData icon, Color color}) _style() {
-    switch (item.type) {
-      case 'cni':
-        return (icon: Icons.credit_card, color: const Color(0xFF2563EB));
-      case 'chifa':
-        return (icon: Icons.health_and_safety_outlined, color: const Color(0xFF16A34A));
-      case 'bilan':
-        return (icon: Icons.science_outlined, color: const Color(0xFF16A34A));
-      case 'ordonnance':
-        return (icon: Icons.medical_services_outlined, color: const Color(0xFF2563EB));
-      case 'radio':
-        return (icon: Icons.image_outlined, color: const Color(0xFF9333EA));
-      default:
-        return (icon: Icons.description_outlined, color: const Color(0xFF64748B));
+  Widget _buildContent() {
+    if (loading) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 36),
+        child: Center(child: CircularProgressIndicator()),
+      );
     }
-  }
 
-  @override
-  Widget build(BuildContext context) {
-    final s = _style();
-    return InkWell(
-      onTap: () {
-        // TODO: ouvrir le document / le bilan / le scan original
-      },
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-        child: Row(
+    if (error != null) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 28),
+        child: Column(
           children: [
-            Container(
-              width: 40, height: 40,
-              decoration: BoxDecoration(
-                color: s.color.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Icon(s.icon, color: s.color, size: 22),
+            const Icon(Icons.cloud_off, color: HomeScreen._ink500, size: 32),
+            const SizedBox(height: 10),
+            const Text(
+              "Impossible de charger l'historique.",
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 13, color: HomeScreen._ink500),
             ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+            const SizedBox(height: 12),
+            TextButton.icon(
+              onPressed: onRetry,
+              icon: const Icon(Icons.refresh, size: 18),
+              label: const Text('Réessayer'),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (entries.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(horizontal: 20, vertical: 28),
+        child: Column(
+          children: [
+            Icon(Icons.inbox_outlined, color: HomeScreen._ink500, size: 32),
+            SizedBox(height: 10),
+            Text(
+              'Aucune numérisation pour le moment.\nVotre historique apparaîtra ici.',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 13, color: HomeScreen._ink500, height: 1.4),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Column(
+      children: [
+        for (int i = 0; i < entries.length; i++) ...[
+          if (i > 0) const Divider(height: 1, color: HomeScreen._ink200),
+          HistoryTile(entry: entries[i], onTap: () => onTapEntry(entries[i])),
+        ],
+        Material(
+          color: HomeScreen._bg,
+          child: InkWell(
+            onTap: onSeeAll,
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              decoration: const BoxDecoration(
+                border: Border(top: BorderSide(color: HomeScreen._ink200)),
+              ),
+              child: const Row(
+                mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Text(item.title,
-                      style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: HomeScreen._ink900,
-                      )),
-                  const SizedBox(height: 1),
-                  Text('${item.patient} · ${item.time}',
-                      style: const TextStyle(
-                        fontSize: 11.5,
-                        color: HomeScreen._ink500,
-                      )),
+                  Text(
+                    "Voir tout l'historique",
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: HomeScreen._primary,
+                    ),
+                  ),
+                  SizedBox(width: 6),
+                  Icon(Icons.arrow_forward, size: 16, color: HomeScreen._primary),
                 ],
               ),
             ),
-            const Icon(Icons.chevron_right, color: HomeScreen._ink400, size: 20),
-          ],
+          ),
         ),
-      ),
+      ],
     );
   }
 }
