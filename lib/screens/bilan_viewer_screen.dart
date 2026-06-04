@@ -7,6 +7,7 @@ import '../models/bilan.dart';
 import '../models/bilan_page.dart';
 import '../models/valeur_biologique.dart';
 import '../services/audit_service.dart';
+import '../services/auth_service.dart';
 import '../services/document_print_service.dart';
 import 'fullscreen_image_viewer.dart';
 
@@ -85,29 +86,37 @@ class _BilanViewerScreenState extends State<BilanViewerScreen> {
   // ── Menu 3 points (Imprimer / Supprimer) ──────────────────────────────────
 
   Widget _buildMenu() {
+    final auth = AuthService.instance;
+    final canExport = auth.canExportRecords;
+    final canDelete = auth.canDeleteRecords;
+    // Archiviste : aucune action sensible → on masque le menu entièrement.
+    if (!canExport && !canDelete) return const SizedBox.shrink();
+
     return PopupMenuButton<String>(
       icon: const Icon(Icons.more_vert),
       onSelected: (value) {
         if (value == 'print') _print();
         if (value == 'delete') _confirmDelete(context);
       },
-      itemBuilder: (_) => const [
-        PopupMenuItem(
-          value: 'print',
-          child: ListTile(
-            leading: Icon(Icons.print_outlined),
-            title: Text('Imprimer'),
-            contentPadding: EdgeInsets.zero,
+      itemBuilder: (_) => [
+        if (canExport)
+          const PopupMenuItem(
+            value: 'print',
+            child: ListTile(
+              leading: Icon(Icons.print_outlined),
+              title: Text('Imprimer'),
+              contentPadding: EdgeInsets.zero,
+            ),
           ),
-        ),
-        PopupMenuItem(
-          value: 'delete',
-          child: ListTile(
-            leading: Icon(Icons.delete_outline, color: Colors.red),
-            title: Text('Supprimer', style: TextStyle(color: Colors.red)),
-            contentPadding: EdgeInsets.zero,
+        if (canDelete)
+          const PopupMenuItem(
+            value: 'delete',
+            child: ListTile(
+              leading: Icon(Icons.delete_outline, color: Colors.red),
+              title: Text('Supprimer', style: TextStyle(color: Colors.red)),
+              contentPadding: EdgeInsets.zero,
+            ),
           ),
-        ),
       ],
     );
   }

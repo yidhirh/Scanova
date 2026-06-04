@@ -23,7 +23,7 @@ import '../widgets/history_tile.dart' show formatRelativeTime;
 /// correspondantes (`null` = aucun filtre).
 enum _AuditFilter {
   tout('Tout', null),
-  modifications('Modifications', ['creation', 'suppression']),
+  modifications('Modifications', ['creation', 'modification', 'suppression']),
   exports('Exports', ['export']);
 
   const _AuditFilter(this.label, this.actions);
@@ -167,6 +167,8 @@ class _AuditTile extends StatelessWidget {
   ({IconData icon, Color color}) get _style => switch (entry.action) {
         AuditAction.creation =>
           (icon: Icons.add_circle_outline, color: const Color(0xFF16A34A)),
+        AuditAction.modification =>
+          (icon: Icons.edit_outlined, color: const Color(0xFFF59E0B)),
         AuditAction.suppression =>
           (icon: Icons.delete_outline, color: const Color(0xFFDC2626)),
         AuditAction.exportation =>
@@ -176,6 +178,9 @@ class _AuditTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final s = _style;
+    final roleLabel = entry.roleLabel;
+    final actor =
+        roleLabel == null ? entry.actorLabel : '${entry.actorLabel} ($roleLabel)';
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       child: Row(
@@ -205,7 +210,7 @@ class _AuditTile extends StatelessWidget {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  '${entry.actorLabel} · ${formatRelativeTime(entry.createdAt)}',
+                  '$actor · ${formatRelativeTime(entry.createdAt)}',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(fontSize: 11.5, color: _ink500),

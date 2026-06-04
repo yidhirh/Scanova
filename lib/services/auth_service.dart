@@ -39,6 +39,15 @@ class AuthService {
   User? _currentUser;
   User? get currentUser => _currentUser;
 
+  /// Rôle du compte connecté, `null` si déconnecté.
+  UserRole? get currentRole => _currentUser?.role;
+
+  // Raccourcis de permission — `false` si déconnecté. Définitions dans [UserRole].
+  bool get canManageUsers => _currentUser?.role.canManageUsers ?? false;
+  bool get canViewAudit => _currentUser?.role.canViewAudit ?? false;
+  bool get canDeleteRecords => _currentUser?.role.canDeleteRecords ?? false;
+  bool get canExportRecords => _currentUser?.role.canExportRecords ?? false;
+
   // ── Hachage ────────────────────────────────────────────────────────────
 
   String _generateSalt() {
@@ -91,6 +100,13 @@ class AuthService {
 
   // ── Inscription / Connexion / Déconnexion ──────────────────────────────
 
+  /// Inscription en libre-service (écran d'inscription).
+  ///
+  /// Attribution du rôle : le **tout premier compte** de l'appareil devient
+  /// [UserRole.admin] (il configure l'app et gère les autres comptes). Les
+  /// inscriptions ultérieures (lien « Créer un compte » de la connexion)
+  /// reçoivent le rôle le moins privilégié [UserRole.archiviste] — seul un
+  /// admin peut ensuite élever un compte. Connecte l'utilisateur si succès.
   Future<AuthResult> register({
     required String nomComplet,
     required String email,
@@ -104,6 +120,9 @@ class AuthService {
         return AuthResult.emailAlreadyUsed;
       }
 
+      final isFirstAccount = (await dao.countUsers()) == 0;
+      final role = isFirstAccount ? UserRole.admin : UserRole.archiviste;
+
       final salt = _generateSalt();
       final hash = _hashPassword(password, salt);
       final id = await dao.insertUser(User(
@@ -111,10 +130,43 @@ class AuthService {
         email: normalizedEmail,
         passwordHash: hash,
         salt: salt,
+        role: role,
       ));
 
       _currentUser = await dao.getUserById(id);
       await _persistSession(id);
+      return AuthResult.success;
+    } catch (_) {
+      return AuthResult.unknownError;
+    }
+  }
+
+  /// Création d'un compte par un **administrateur**, avec un rôle explicite
+  /// (écran de gestion des utilisateurs). Ne modifie PAS la session courante :
+  /// l'admin reste connecté. L'appelant doit vérifier [canManageUsers] en amont.
+  Future<AuthResult> createUser({
+    required String nomComplet,
+    required String email,
+    required String password,
+    required UserRole role,
+  }) async {
+    try {
+      final dao = DatabaseHelper.instance;
+      final normalizedEmail = email.trim().toLowerCase();
+
+      if (await dao.getUserByEmail(normalizedEmail) != null) {
+        return AuthResult.emailAlreadyUsed;
+      }
+
+      final salt = _generateSalt();
+      final hash = _hashPassword(password, salt);
+      await dao.insertUser(User(
+        nomComplet: nomComplet.trim(),
+        email: normalizedEmail,
+        passwordHash: hash,
+        salt: salt,
+        role: role,
+      ));
       return AuthResult.success;
     } catch (_) {
       return AuthResult.unknownError;
