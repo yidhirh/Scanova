@@ -15,6 +15,7 @@ import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
 import '../screens/advanced_search_screen.dart';
+import '../screens/audit_log_screen.dart';
 import '../screens/login_screen.dart';
 import '../services/auth_service.dart';
 import 'main_nav_scope.dart';
@@ -32,6 +33,14 @@ class AppDrawer extends StatelessWidget {
     Navigator.push(
       context,
       MaterialPageRoute(builder: (_) => const AdvancedSearchScreen()),
+    );
+  }
+
+  void _openAuditLog(BuildContext context) {
+    Navigator.pop(context);
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const AuditLogScreen()),
     );
   }
 
@@ -118,6 +127,11 @@ class AppDrawer extends StatelessWidget {
               icon: Icons.search,
               label: 'Recherche avancée',
               onTap: () => _openAdvancedSearch(context),
+            ),
+            _DrawerItem(
+              icon: Icons.fact_check_outlined,
+              label: "Journal d'audit",
+              onTap: () => _openAuditLog(context),
             ),
             _DrawerItem(
               icon: Icons.info_outline,

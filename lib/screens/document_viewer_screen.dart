@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../database/database_helper.dart';
 import '../models/document_page.dart';
 import '../models/medical_document.dart';
+import '../services/audit_service.dart';
 import '../services/document_print_service.dart';
 import 'fullscreen_image_viewer.dart';
 
@@ -103,6 +104,12 @@ class _DocumentViewerScreenState extends State<DocumentViewerScreen> {
         ],
         pages: printPages,
       );
+      await AuditService.instance.logExport(
+        entityType: 'document',
+        entityId: doc.id,
+        patientId: doc.patientId,
+        description: 'Export du document « ${doc.titre} » (${_capitalize(doc.typeDocument)})',
+      );
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -140,6 +147,12 @@ class _DocumentViewerScreenState extends State<DocumentViewerScreen> {
     if (ok != true || doc.id == null) return;
 
     await DatabaseHelper.instance.deleteMedicalDocument(doc.id!);
+    await AuditService.instance.logSuppression(
+      entityType: 'document',
+      entityId: doc.id,
+      patientId: doc.patientId,
+      description: 'Suppression du document « ${doc.titre} » (${_capitalize(doc.typeDocument)})',
+    );
     if (mounted) Navigator.pop(context, true);
   }
 

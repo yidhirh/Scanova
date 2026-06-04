@@ -11,8 +11,11 @@ import 'package:scanova/main.dart';
 
 void main() {
   testWidgets('Scanova démarre correctement', (WidgetTester tester) async {
+    // On injecte un `home` léger pour éviter le SplashScreen, qui déclenche
+    // l'initialisation sqflite et des animations indisponibles en test.
     await tester.pumpWidget(const ScanovaApp(home: SizedBox.shrink()));
 
     expect(find.byType(ScanovaApp), findsOneWidget);
+    expect(find.byType(MaterialApp), findsOneWidget);
   });
 }
