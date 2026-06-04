@@ -13,21 +13,26 @@
 // nom du patient est figé dans [description]. Une entrée d'audit survit donc à la
 // suppression de l'utilisateur ou du patient concerné.
 
+import 'user.dart';
+
 /// Nature de l'action journalisée. La chaîne stockée en base est donnée par
 /// [value] ; [fromString] est défensif (valeur inconnue → repli sur création).
 enum AuditAction {
   creation,
+  modification,
   suppression,
   exportation;
 
   /// Valeur persistée en colonne `action`.
   String get value => switch (this) {
         AuditAction.creation => 'creation',
+        AuditAction.modification => 'modification',
         AuditAction.suppression => 'suppression',
         AuditAction.exportation => 'export',
       };
 
   static AuditAction fromString(String? s) => switch (s) {
+        'modification' => AuditAction.modification,
         'suppression' => AuditAction.suppression,
         'export' => AuditAction.exportation,
         _ => AuditAction.creation,
@@ -57,6 +62,10 @@ class AuditLog {
   /// Libellé lisible et figé (inclut le nom du patient le cas échéant).
   final String description;
 
+  /// Snapshot du rôle de l'acteur (valeur [UserRole.value]) au moment de
+  /// l'action. `null` pour les entrées antérieures aux rôles.
+  final String? userRole;
+
   final DateTime? createdAt;
 
   const AuditLog({
@@ -69,8 +78,13 @@ class AuditLog {
     this.entityId,
     this.patientId,
     required this.description,
+    this.userRole,
     this.createdAt,
   });
+
+  /// Libellé lisible du rôle de l'acteur, ou `null` si inconnu.
+  String? get roleLabel =>
+      userRole == null ? null : UserRole.fromString(userRole).label;
 
   /// Libellé de l'acteur : nom complet, sinon email, sinon repli explicite.
   String get actorLabel {
@@ -90,6 +104,7 @@ class AuditLog {
       'entity_id': entityId,
       'patient_id': patientId,
       'description': description,
+      'user_role': userRole,
     };
   }
 
@@ -104,6 +119,7 @@ class AuditLog {
       entityId: map['entity_id'] as int?,
       patientId: map['patient_id'] as int?,
       description: (map['description'] as String?) ?? '',
+      userRole: map['user_role'] as String?,
       createdAt: _parseTimestamp(map['created_at'] as String?),
     );
   }

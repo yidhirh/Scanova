@@ -38,6 +38,22 @@ class AuditService {
     );
   }
 
+  /// Journalise une **modification** (changement de rôle d'un compte, édition…).
+  Future<void> logModification({
+    required String entityType,
+    int? entityId,
+    int? patientId,
+    required String description,
+  }) {
+    return _log(
+      action: AuditAction.modification,
+      entityType: entityType,
+      entityId: entityId,
+      patientId: patientId,
+      description: description,
+    );
+  }
+
   /// Journalise une **suppression** (document, bilan…).
   Future<void> logSuppression({
     required String entityType,
@@ -88,6 +104,7 @@ class AuditService {
         entityId: entityId,
         patientId: patientId,
         description: description,
+        userRole: user?.role.value,
       );
       await DatabaseHelper.instance.insertAuditLog(log);
       debugPrint('[Audit] ${action.value} · $entityType · $description');

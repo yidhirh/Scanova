@@ -22,7 +22,9 @@ class DatabaseHelper {
   //      mot de passe haché).
   // v6 : traçabilité / audit. Ajout de la table `audit_logs` (journal des
   //      modifications et exports : qui a fait quoi et quand).
-  static const _databaseVersion = 6;
+  // v7 : rôles utilisateurs. Ajout `users.role` (admin / medecin / archiviste)
+  //      et `audit_logs.user_role` (snapshot du rôle de l'acteur).
+  static const _databaseVersion = 7;
 
   DatabaseHelper._privateConstructor();
   static final DatabaseHelper instance = DatabaseHelper._privateConstructor();
@@ -236,6 +238,25 @@ class DatabaseHelper {
     if (oldVersion < 6) {
       await _createAuditTable(db);
     }
+
+    if (oldVersion < 7) {
+      // users.role : la table `users` existe (sans `role`) depuis v5. Pour
+      // oldVersion < 5, _createUsersTable (palier v5 ci-dessus) l'a déjà créée
+      // AVEC `role` → on n'ajoute la colonne que pour les bases v5/v6.
+      if (oldVersion >= 5) {
+        await db.execute("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'medecin'");
+        // Aucune base existante n'a d'admin : on promeut le compte le plus
+        // ancien, sinon plus personne ne pourrait gérer les comptes/rôles.
+        await db.execute(
+          "UPDATE users SET role = 'admin' WHERE id = (SELECT MIN(id) FROM users)",
+        );
+      }
+      // audit_logs.user_role : la table existe (sans `user_role`) depuis v6.
+      // Pour oldVersion < 6, _createAuditTable l'a déjà créée AVEC la colonne.
+      if (oldVersion >= 6) {
+        await db.execute('ALTER TABLE audit_logs ADD COLUMN user_role TEXT');
+      }
+    }
   }
 
   /// Table des comptes médecin (authentification locale, v5).
@@ -250,6 +271,7 @@ class DatabaseHelper {
         email         TEXT NOT NULL UNIQUE COLLATE NOCASE,
         password_hash TEXT NOT NULL,
         salt          TEXT NOT NULL,
+        role          TEXT NOT NULL DEFAULT 'medecin',
         created_at    DATETIME DEFAULT CURRENT_TIMESTAMP
       )
     ''');
@@ -275,6 +297,7 @@ class DatabaseHelper {
         entity_id    INTEGER,
         patient_id   INTEGER,
         description  TEXT NOT NULL,
+        user_role    TEXT,
         created_at   DATETIME DEFAULT CURRENT_TIMESTAMP
       )
     ''');
@@ -455,6 +478,21 @@ class DatabaseHelper {
     final db = await database;
     final rows = await db.query('users', where: 'id = ?', whereArgs: [id], limit: 1);
     return rows.isEmpty ? null : User.fromMap(rows.first);
+  }
+
+  /// Retourne tous les comptes, du plus ancien au plus récent. Alimente l'écran
+  /// d'administration (gestion des comptes et des rôles).
+  Future<List<User>> getAllUsers() async {
+    final db = await database;
+    final rows = await db.query('users', orderBy: 'created_at ASC, id ASC');
+    return rows.map((r) => User.fromMap(r)).toList();
+  }
+
+  /// Met à jour le rôle d'un compte. [role] est la valeur persistée
+  /// (`UserRole.value`). Retourne le nombre de lignes modifiées (0 si id inconnu).
+  Future<int> updateUserRole(int userId, String role) async {
+    final db = await database;
+    return db.update('users', {'role': role}, where: 'id = ?', whereArgs: [userId]);
   }
 
   // ── card_scans ────────────────────────────────────────────────────────────

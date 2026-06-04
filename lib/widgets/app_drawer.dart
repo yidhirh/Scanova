@@ -14,9 +14,11 @@
 import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
+import '../models/user.dart';
 import '../screens/advanced_search_screen.dart';
 import '../screens/audit_log_screen.dart';
 import '../screens/login_screen.dart';
+import '../screens/user_management_screen.dart';
 import '../services/auth_service.dart';
 import 'main_nav_scope.dart';
 
@@ -41,6 +43,14 @@ class AppDrawer extends StatelessWidget {
     Navigator.push(
       context,
       MaterialPageRoute(builder: (_) => const AuditLogScreen()),
+    );
+  }
+
+  void _openUserManagement(BuildContext context) {
+    Navigator.pop(context);
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const UserManagementScreen()),
     );
   }
 
@@ -128,11 +138,19 @@ class AppDrawer extends StatelessWidget {
               label: 'Recherche avancée',
               onTap: () => _openAdvancedSearch(context),
             ),
-            _DrawerItem(
-              icon: Icons.fact_check_outlined,
-              label: "Journal d'audit",
-              onTap: () => _openAuditLog(context),
-            ),
+            // Réservés à l'administrateur (cf. UserRole.canManageUsers / canViewAudit).
+            if (AuthService.instance.canManageUsers)
+              _DrawerItem(
+                icon: Icons.manage_accounts_outlined,
+                label: 'Gestion des utilisateurs',
+                onTap: () => _openUserManagement(context),
+              ),
+            if (AuthService.instance.canViewAudit)
+              _DrawerItem(
+                icon: Icons.fact_check_outlined,
+                label: "Journal d'audit",
+                onTap: () => _openAuditLog(context),
+              ),
             _DrawerItem(
               icon: Icons.info_outline,
               label: 'À propos',
@@ -197,6 +215,10 @@ class _DrawerHeader extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(fontSize: 13, color: AppColors.ink500),
                 ),
+                if (user != null) ...[
+                  const SizedBox(height: 6),
+                  _RolePill(role: user.role),
+                ],
               ],
             ),
           ),
@@ -261,6 +283,45 @@ class _DrawerItem extends StatelessWidget {
           borderRadius: BorderRadius.circular(AppRadii.lg),
         ),
         onTap: onTap,
+      ),
+    );
+  }
+}
+
+/// Pastille colorée indiquant le rôle du compte connecté (en-tête du Drawer).
+class _RolePill extends StatelessWidget {
+  final UserRole role;
+  const _RolePill({required this.role});
+
+  ({Color color, IconData icon}) get _style => switch (role) {
+        UserRole.admin =>
+          (color: const Color(0xFF7C3AED), icon: Icons.shield_outlined),
+        UserRole.medecin =>
+          (color: const Color(0xFF16A34A), icon: Icons.medical_services_outlined),
+        UserRole.archiviste =>
+          (color: const Color(0xFF64748B), icon: Icons.inventory_2_outlined),
+      };
+
+  @override
+  Widget build(BuildContext context) {
+    final s = _style;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: s.color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: s.color.withValues(alpha: 0.4)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(s.icon, size: 12, color: s.color),
+          const SizedBox(width: 4),
+          Text(
+            role.label,
+            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: s.color),
+          ),
+        ],
       ),
     );
   }

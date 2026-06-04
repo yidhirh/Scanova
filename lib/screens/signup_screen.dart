@@ -136,7 +136,7 @@ class _SignupScreenState extends State<SignupScreen> {
                   ),
                   const SizedBox(height: 8),
                   const Text(
-                    'Compte médecin enregistré sur cet appareil',
+                    'Compte enregistré sur cet appareil',
                     textAlign: TextAlign.center,
                     style: TextStyle(fontSize: 14, color: _muted),
                   ),
