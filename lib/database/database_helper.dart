@@ -8,6 +8,7 @@ import '../models/bilan.dart';
 import '../models/bilan_page.dart';
 import '../models/valeur_biologique.dart';
 import '../models/user.dart';
+import '../models/audit_log.dart';
 
 class DatabaseHelper {
   static const _databaseName = 'scanova.db';
@@ -19,7 +20,9 @@ class DatabaseHelper {
   //      `bilan_pages` (texte OCR propre à chaque page).
   // v5 : authentification locale. Ajout de la table `users` (comptes médecin,
   //      mot de passe haché).
-  static const _databaseVersion = 5;
+  // v6 : traçabilité / audit. Ajout de la table `audit_logs` (journal des
+  //      modifications et exports : qui a fait quoi et quand).
+  static const _databaseVersion = 6;
 
   DatabaseHelper._privateConstructor();
   static final DatabaseHelper instance = DatabaseHelper._privateConstructor();
@@ -107,6 +110,7 @@ class DatabaseHelper {
     await _createBilanTables(db);
     await _createPagesTables(db);
     await _createUsersTable(db);
+    await _createAuditTable(db);
   }
 
   /// Migration : appelée uniquement sur une DB existante quand
@@ -228,6 +232,10 @@ class DatabaseHelper {
     if (oldVersion < 5) {
       await _createUsersTable(db);
     }
+
+    if (oldVersion < 6) {
+      await _createAuditTable(db);
+    }
   }
 
   /// Table des comptes médecin (authentification locale, v5).
@@ -245,6 +253,34 @@ class DatabaseHelper {
         created_at    DATETIME DEFAULT CURRENT_TIMESTAMP
       )
     ''');
+  }
+
+  /// Table du journal d'audit (v6). Trace les modifications (créations,
+  /// suppressions) et les exports : qui a fait quoi et quand.
+  ///
+  /// **Aucune clé étrangère** : un enregistrement d'audit doit être immuable et
+  /// survivre à la suppression de l'utilisateur ou du patient référencé. On
+  /// dénormalise donc l'identité de l'acteur (`user_email` / `user_nom`) et on
+  /// fige le nom du patient dans `description`. `user_id` / `patient_id` ne sont
+  /// conservés qu'à titre indicatif (rattachement, futur filtre par dossier).
+  Future<void> _createAuditTable(DatabaseExecutor db) async {
+    await db.execute('''
+      CREATE TABLE audit_logs (
+        id           INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id      INTEGER,
+        user_email   TEXT,
+        user_nom     TEXT,
+        action       TEXT NOT NULL,
+        entity_type  TEXT NOT NULL,
+        entity_id    INTEGER,
+        patient_id   INTEGER,
+        description  TEXT NOT NULL,
+        created_at   DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    ''');
+    await db.execute('CREATE INDEX idx_audit_created ON audit_logs(created_at)');
+    await db.execute('CREATE INDEX idx_audit_action ON audit_logs(action)');
+    await db.execute('CREATE INDEX idx_audit_patient ON audit_logs(patient_id)');
   }
 
   /// Création des tables `bilans` et `valeurs_biologiques` (schéma v3, sans
@@ -698,5 +734,50 @@ class DatabaseHelper {
       $limitClause
     ''');
     return rows;
+  }
+
+  // ── audit_logs (journal de traçabilité) ───────────────────────────────────
+
+  /// Insère une entrée dans le journal d'audit et retourne l'id généré.
+  /// Appelé par [AuditService] ; ne doit jamais faire échouer l'action métier
+  /// (la gestion d'erreur est assurée côté service).
+  Future<int> insertAuditLog(AuditLog log) async {
+    final db = await database;
+    return db.insert('audit_logs', log.toMap());
+  }
+
+  /// Retourne les entrées du journal d'audit, du plus récent au plus ancien.
+  ///
+  /// [actions] : si fourni et non vide, ne retient que ces types d'action
+  /// (valeurs persistées, ex. `['creation', 'suppression']`). [patientId] :
+  /// filtre sur un dossier donné. [limit] borne le nombre de lignes (défaut
+  /// 200 ; `null` => sans limite).
+  Future<List<AuditLog>> getAuditLogs({
+    List<String>? actions,
+    int? patientId,
+    int? limit = 200,
+  }) async {
+    final db = await database;
+
+    final clauses = <String>[];
+    final args = <Object?>[];
+    if (actions != null && actions.isNotEmpty) {
+      final placeholders = List.filled(actions.length, '?').join(', ');
+      clauses.add('action IN ($placeholders)');
+      args.addAll(actions);
+    }
+    if (patientId != null) {
+      clauses.add('patient_id = ?');
+      args.add(patientId);
+    }
+
+    final rows = await db.query(
+      'audit_logs',
+      where: clauses.isEmpty ? null : clauses.join(' AND '),
+      whereArgs: args.isEmpty ? null : args,
+      orderBy: 'created_at DESC, id DESC',
+      limit: limit,
+    );
+    return rows.map((r) => AuditLog.fromMap(r)).toList();
   }
 }

@@ -22,6 +22,7 @@ import '../models/card_scan.dart';
 import '../models/document_type.dart';
 import '../models/patient.dart';
 import '../models/patient_data.dart';
+import '../services/audit_service.dart';
 import 'patient_dossier_screen.dart';
 
 class PatientFormScreen extends StatefulWidget {
@@ -170,6 +171,7 @@ class _PatientFormScreenState extends State<PatientFormScreen> {
         nom: nom, prenom: prenom, dateNaissance: dateIso,
       );
 
+      final bool isNewPatient = existing == null;
       int patientId;
       if (existing != null) {
         // Patient existant → on demande quoi faire avant d'ajouter le scan.
@@ -191,12 +193,30 @@ class _PatientFormScreenState extends State<PatientFormScreen> {
         ));
       }
 
+      final typeCarte = _isChifa ? 'CHIFA' : 'CNI';
       await dao.insertCardScan(CardScan(
         patientId: patientId,
-        typeCarte: _isChifa ? 'CHIFA' : 'CNI',
+        typeCarte: typeCarte,
         imagePath: widget.imagePath,
         ocrRawText: widget.ocrRawText,
       ));
+
+      // Traçabilité : nouveau patient → création de dossier ; patient existant
+      // → simple ajout d'une carte au dossier.
+      if (isNewPatient) {
+        await AuditService.instance.logCreation(
+          entityType: 'patient',
+          entityId: patientId,
+          patientId: patientId,
+          description: 'Création du patient $nom $prenom (carte $typeCarte)',
+        );
+      } else {
+        await AuditService.instance.logCreation(
+          entityType: 'scan',
+          patientId: patientId,
+          description: 'Ajout d\'une carte $typeCarte au dossier de $nom $prenom',
+        );
+      }
 
       if (!mounted) return;
       Navigator.pushReplacement(

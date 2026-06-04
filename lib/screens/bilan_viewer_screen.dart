@@ -6,6 +6,7 @@ import '../database/database_helper.dart';
 import '../models/bilan.dart';
 import '../models/bilan_page.dart';
 import '../models/valeur_biologique.dart';
+import '../services/audit_service.dart';
 import '../services/document_print_service.dart';
 import 'fullscreen_image_viewer.dart';
 
@@ -72,6 +73,12 @@ class _BilanViewerScreenState extends State<BilanViewerScreen> {
     if (bilan.id == null) return;
 
     await DatabaseHelper.instance.deleteBilan(bilan.id!);
+    await AuditService.instance.logSuppression(
+      entityType: 'bilan',
+      entityId: bilan.id,
+      patientId: bilan.patientId,
+      description: 'Suppression d\'un bilan biologique du ${_formatDate(bilan.dateExamen)}',
+    );
     if (context.mounted) Navigator.pop(context, true);
   }
 
@@ -126,6 +133,12 @@ class _BilanViewerScreenState extends State<BilanViewerScreen> {
         title: 'Bilan biologique',
         metaLines: meta,
         pages: printPages,
+      );
+      await AuditService.instance.logExport(
+        entityType: 'bilan',
+        entityId: bilan.id,
+        patientId: bilan.patientId,
+        description: 'Export d\'un bilan biologique du ${_formatDate(bilan.dateExamen)}',
       );
     } catch (e) {
       if (!mounted) return;

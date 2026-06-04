@@ -10,7 +10,13 @@ void main() {
 }
 
 class ScanovaApp extends StatelessWidget {
-  const ScanovaApp({super.key});
+  /// Écran racine. En production il reste `null` → on affiche le [SplashScreen]
+  /// (qui initialise la base et restaure la session). Il sert de point
+  /// d'injection pour les tests : passer un widget léger évite de déclencher
+  /// l'init sqflite / les animations du splash dans l'environnement de test.
+  final Widget? home;
+
+  const ScanovaApp({super.key, this.home});
 
   @override
   Widget build(BuildContext context) {
@@ -18,7 +24,7 @@ class ScanovaApp extends StatelessWidget {
       title: 'Scanova',
       theme: AppTheme.light(),
       debugShowCheckedModeBanner: false,
-      home: const SplashScreen(),
+      home: home ?? const SplashScreen(),
     );
   }
 }

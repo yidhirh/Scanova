@@ -4,6 +4,7 @@ import '../database/database_helper.dart';
 import '../models/bilan.dart';
 import '../models/bilan_page.dart';
 import '../models/valeur_biologique.dart';
+import '../services/audit_service.dart';
 
 /// Étape 5 du BILAN_PARSER_BRIEF : formulaire de correction d'un bilan
 /// pré-rempli par le parser.
@@ -180,6 +181,17 @@ class _BilanFormScreenState extends State<BilanFormScreen> {
       );
 
       final id = await DatabaseHelper.instance.insertBilan(bilan);
+
+      final d = bilan.dateExamen;
+      final dateLabel = d != null
+          ? ' du ${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}'
+          : '';
+      await AuditService.instance.logCreation(
+        entityType: 'bilan',
+        entityId: id,
+        patientId: widget.patientId,
+        description: 'Ajout d\'un bilan biologique$dateLabel',
+      );
 
       if (!mounted) return;
       Navigator.pop(context, id);

@@ -17,6 +17,7 @@ import '../widgets/app_button.dart';
 import '../widgets/app_text_field.dart';
 import '../database/database_helper.dart';
 import '../models/patient.dart';
+import '../services/audit_service.dart';
 import 'patient_dossier_screen.dart';
 import 'patient_form_screen.dart' show BloodGroupPicker;
 
@@ -179,6 +180,13 @@ class _PatientManualFormScreenState extends State<PatientManualFormScreen> {
         numeroCni: numeroCni.isNotEmpty ? numeroCni : null,
         numeroSecuriteSociale: numeroSecu.isNotEmpty ? numeroSecu : null,
       ));
+
+      await AuditService.instance.logCreation(
+        entityType: 'patient',
+        entityId: patientId,
+        patientId: patientId,
+        description: 'Création du patient $nom $prenom (saisie manuelle)',
+      );
 
       if (!mounted) return;
       Navigator.pushReplacement(

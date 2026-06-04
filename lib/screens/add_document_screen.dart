@@ -10,6 +10,7 @@ import '../models/bilan_page.dart';
 import '../models/document_page.dart';
 import '../models/medical_document.dart';
 import '../models/patient.dart';
+import '../services/audit_service.dart';
 import '../services/bilan_parser.dart';
 import '../services/document_scanner_service.dart';
 import '../services/ocr_service.dart';
@@ -365,16 +366,25 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
       // `description` = texte global concaténé, conservé pour recherche/résumé.
       final ocr = _ocrText;
 
+      final titre = _titreController.text.trim();
+
       // `documentId: 0` est un placeholder ; la DAO l'écrase avec l'id généré.
-      await DatabaseHelper.instance.insertMedicalDocument(
+      final docId = await DatabaseHelper.instance.insertMedicalDocument(
         MedicalDocument(
           patientId: _effectivePatientId!,
           typeDocument: _selectedType,
-          titre: _titreController.text.trim(),
+          titre: titre,
           description: ocr.isNotEmpty ? ocr : null,
           documentDate: dateIso,
           pages: docPages,
         ),
+      );
+
+      await AuditService.instance.logCreation(
+        entityType: 'document',
+        entityId: docId,
+        patientId: _effectivePatientId,
+        description: 'Ajout du document « $titre » ($_selectedType)',
       );
 
       if (!mounted) return;
