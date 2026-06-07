@@ -1,6 +1,6 @@
 <mxfile host="app.diagrams.net">
   <diagram name="Page-1" id="3Y2Z40D2ol2tz-vKVnYF">
-    <mxGraphModel dx="1544" dy="560" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="0" pageScale="1" pageWidth="827" pageHeight="1169" math="0" shadow="0">
+    <mxGraphModel dx="1664" dy="619" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="0" pageScale="1" pageWidth="827" pageHeight="1169" math="0" shadow="0">
       <root>
         <mxCell id="0" />
         <mxCell id="1" parent="0" />
@@ -14,10 +14,10 @@
           <mxGeometry height="80" width="55" x="-231" y="311" as="geometry" />
         </mxCell>
         <mxCell id="mwCaw-bQYhVS-KGfSb67-17" parent="1" style="shape=mxgraph.uml.actor;whiteSpace=wrap;html=1;              fillColor=#fff2cc;strokeColor=#d6b656;fontSize=12;fontStyle=1;" value="Administrateur" vertex="1">
-          <mxGeometry height="80" width="55" x="-241" y="491" as="geometry" />
+          <mxGeometry height="80" width="92" x="-278" y="491" as="geometry" />
         </mxCell>
         <mxCell id="mwCaw-bQYhVS-KGfSb67-18" parent="1" style="shape=mxgraph.uml.actor;whiteSpace=wrap;html=1;              fillColor=#fff2cc;strokeColor=#d6b656;fontSize=12;fontStyle=1;" value="Archiviste" vertex="1">
-          <mxGeometry height="80" width="55" x="-231" y="671" as="geometry" />
+          <mxGeometry height="80" width="74" x="-250" y="671" as="geometry" />
         </mxCell>
         <mxCell id="mwCaw-bQYhVS-KGfSb67-19" parent="1" style="rounded=1;whiteSpace=wrap;html=1;              fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;arcSize=12;strokeWidth=1.5;" value="&lt;b&gt;Google ML Kit&lt;/b&gt;&lt;br/&gt;(OCR embarqué)" vertex="1">
           <mxGeometry height="70" width="150" x="514" y="326" as="geometry" />
