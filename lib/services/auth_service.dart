@@ -173,6 +173,29 @@ class AuthService {
     }
   }
 
+  /// Réinitialisation du mot de passe d'un compte par un **administrateur**
+  /// (écran de gestion des utilisateurs). L'app étant 100 % locale et sans
+  /// e-mail, il n'y a pas de lien de réinitialisation : l'admin attribue
+  /// directement un nouveau mot de passe que l'utilisateur changera ensuite.
+  ///
+  /// Regénère un sel aléatoire + un hash. Ne touche PAS à la session courante
+  /// (l'admin reste connecté). L'appelant doit vérifier [canManageUsers] en
+  /// amont ; un second garde-fou est appliqué ici par sécurité.
+  Future<AuthResult> resetUserPassword({
+    required int userId,
+    required String newPassword,
+  }) async {
+    if (!canManageUsers) return AuthResult.unknownError;
+    try {
+      final salt = _generateSalt();
+      final hash = _hashPassword(newPassword, salt);
+      final n = await DatabaseHelper.instance.updateUserPassword(userId, hash, salt);
+      return n > 0 ? AuthResult.success : AuthResult.unknownError;
+    } catch (_) {
+      return AuthResult.unknownError;
+    }
+  }
+
   Future<AuthResult> login({
     required String email,
     required String password,
