@@ -78,11 +78,29 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   void _forgotPassword() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text(
-          'Fonction mot de passe oublié à connecter plus tard.',
+    // L'app est 100 % locale (aucun serveur, aucun e-mail) : il n'y a donc pas
+    // de lien de réinitialisation. La récupération passe par l'administrateur,
+    // qui réattribue un mot de passe depuis la gestion des utilisateurs.
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        icon: const Icon(Icons.lock_reset_outlined, color: Color(0xFF2563EB), size: 32),
+        title: const Text('Mot de passe oublié'),
+        content: const Text(
+          'Cette application fonctionne hors ligne, sans e-mail de '
+          'réinitialisation.\n\n'
+          'Demandez à votre administrateur de réinitialiser votre mot de passe '
+          'depuis « Gestion des utilisateurs ». Il vous communiquera un nouveau '
+          'mot de passe, que vous pourrez modifier ensuite.',
+          style: TextStyle(height: 1.45),
         ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Compris'),
+          ),
+        ],
       ),
     );
   }

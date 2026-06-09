@@ -122,6 +122,39 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
     await _reload();
   }
 
+  /// Réinitialise le mot de passe d'un compte (action d'administration). L'app
+  /// étant locale et sans e-mail, l'admin saisit directement le nouveau mot de
+  /// passe, qu'il communiquera à l'utilisateur (à changer ensuite).
+  Future<void> _resetPassword(User user) async {
+    final label = user.nomComplet.isNotEmpty ? user.nomComplet : user.email;
+    final newPassword = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) => _ResetPasswordSheet(userName: label),
+    );
+    if (newPassword == null) return;
+
+    final result = await AuthService.instance.resetUserPassword(
+      userId: user.id!,
+      newPassword: newPassword,
+    );
+    if (result != AuthResult.success) {
+      _snack('Échec de la réinitialisation. Réessayez.', error: true);
+      return;
+    }
+    // On journalise l'action SANS jamais consigner le mot de passe.
+    await AuditService.instance.logModification(
+      entityType: 'user',
+      entityId: user.id,
+      description: 'Réinitialisation du mot de passe de $label',
+    );
+    _snack('Mot de passe de « $label » réinitialisé.');
+  }
+
   @override
   Widget build(BuildContext context) {
     final currentId = AuthService.instance.currentUser?.id;
@@ -165,6 +198,7 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
                 user: users[i],
                 isCurrent: users[i].id == currentId,
                 onChangeRole: () => _changeRole(users[i]),
+                onResetPassword: () => _resetPassword(users[i]),
               ),
             ),
           );
@@ -178,11 +212,13 @@ class _UserCard extends StatelessWidget {
   final User user;
   final bool isCurrent;
   final VoidCallback onChangeRole;
+  final VoidCallback onResetPassword;
 
   const _UserCard({
     required this.user,
     required this.isCurrent,
     required this.onChangeRole,
+    required this.onResetPassword,
   });
 
   @override
@@ -221,12 +257,46 @@ class _UserCard extends StatelessWidget {
           overflow: TextOverflow.ellipsis,
           style: const TextStyle(fontSize: 12.5, color: Color(0xFF64748B)),
         ),
-        trailing: _RoleChip(role: user.role),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _RoleChip(role: user.role),
+            PopupMenuButton<_UserAction>(
+              icon: const Icon(Icons.more_vert, color: Color(0xFF64748B)),
+              tooltip: 'Actions',
+              onSelected: (action) => switch (action) {
+                _UserAction.changeRole => onChangeRole(),
+                _UserAction.resetPassword => onResetPassword(),
+              },
+              itemBuilder: (_) => const [
+                PopupMenuItem(
+                  value: _UserAction.changeRole,
+                  child: ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(Icons.badge_outlined),
+                    title: Text('Changer le rôle'),
+                  ),
+                ),
+                PopupMenuItem(
+                  value: _UserAction.resetPassword,
+                  child: ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(Icons.lock_reset_outlined),
+                    title: Text('Réinitialiser le mot de passe'),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
         onTap: onChangeRole,
       ),
     );
   }
 }
+
+/// Actions disponibles sur une carte utilisateur (menu « ⋮ »).
+enum _UserAction { changeRole, resetPassword }
 
 class _RoleChip extends StatelessWidget {
   final UserRole role;
@@ -473,6 +543,163 @@ class _UserFormSheetState extends State<_UserFormSheet> {
       decoration: InputDecoration(
         hintText: hint,
         prefixIcon: Icon(icon, color: _muted),
+        suffixIcon: onToggleObscure != null
+            ? IconButton(
+                onPressed: onToggleObscure,
+                icon: Icon(
+                  obscure ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+                  color: _muted,
+                ),
+              )
+            : null,
+        filled: true,
+        fillColor: Colors.white,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: _border),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: _border),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: _primary, width: 1.5),
+        ),
+      ),
+    );
+  }
+}
+
+/// Feuille de saisie d'un nouveau mot de passe (réinitialisation admin).
+/// Renvoie via `Navigator.pop` le nouveau mot de passe en cas de validation.
+class _ResetPasswordSheet extends StatefulWidget {
+  final String userName;
+  const _ResetPasswordSheet({required this.userName});
+
+  @override
+  State<_ResetPasswordSheet> createState() => _ResetPasswordSheetState();
+}
+
+class _ResetPasswordSheetState extends State<_ResetPasswordSheet> {
+  static const Color _primary = Color(0xFF2563EB);
+  static const Color _border = Color(0xFFCBD5E1);
+  static const Color _muted = Color(0xFF64748B);
+
+  final _password = TextEditingController();
+  final _confirm = TextEditingController();
+  bool _obscure = true;
+
+  @override
+  void dispose() {
+    _password.dispose();
+    _confirm.dispose();
+    super.dispose();
+  }
+
+  void _error(String msg) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(msg), backgroundColor: const Color(0xFFDC2626)),
+    );
+  }
+
+  void _submit() {
+    FocusScope.of(context).unfocus();
+    final pwd = _password.text;
+    if (pwd.length < 6) {
+      _error('Le mot de passe doit contenir au moins 6 caractères.');
+      return;
+    }
+    if (pwd != _confirm.text) {
+      _error('Les deux mots de passe ne correspondent pas.');
+      return;
+    }
+    Navigator.pop(context, pwd);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(
+        left: 20,
+        right: 20,
+        top: 12,
+        bottom: MediaQuery.of(context).viewInsets.bottom + 20,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Center(
+            child: Container(
+              width: 40,
+              height: 4,
+              margin: const EdgeInsets.only(bottom: 16),
+              decoration: BoxDecoration(
+                color: const Color(0xFFCBD5E1),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ),
+          const Text(
+            'Réinitialiser le mot de passe',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: Color(0xFF0F172A)),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Définissez un nouveau mot de passe pour « ${widget.userName} », '
+            'puis communiquez-le-lui. Il pourra le changer ensuite.',
+            style: const TextStyle(fontSize: 13, color: _muted, height: 1.4),
+          ),
+          const SizedBox(height: 16),
+          _field(
+            controller: _password,
+            hint: 'Nouveau mot de passe (6 caractères min.)',
+            obscure: _obscure,
+            onToggleObscure: () => setState(() => _obscure = !_obscure),
+          ),
+          const SizedBox(height: 12),
+          _field(
+            controller: _confirm,
+            hint: 'Confirmer le mot de passe',
+            obscure: _obscure,
+            onSubmitted: (_) => _submit(),
+          ),
+          const SizedBox(height: 20),
+          SizedBox(
+            height: 50,
+            child: ElevatedButton(
+              onPressed: _submit,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: _primary,
+                foregroundColor: Colors.white,
+                elevation: 0,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+              child: const Text('Réinitialiser',
+                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _field({
+    required TextEditingController controller,
+    required String hint,
+    bool obscure = false,
+    VoidCallback? onToggleObscure,
+    ValueChanged<String>? onSubmitted,
+  }) {
+    return TextField(
+      controller: controller,
+      obscureText: obscure,
+      onSubmitted: onSubmitted,
+      decoration: InputDecoration(
+        hintText: hint,
+        prefixIcon: const Icon(Icons.lock_outline, color: _muted),
         suffixIcon: onToggleObscure != null
             ? IconButton(
                 onPressed: onToggleObscure,

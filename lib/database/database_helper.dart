@@ -495,6 +495,19 @@ class DatabaseHelper {
     return db.update('users', {'role': role}, where: 'id = ?', whereArgs: [userId]);
   }
 
+  /// Remplace le mot de passe d'un compte (nouveau hash + nouveau sel). Utilisé
+  /// par la réinitialisation administrateur. Retourne le nombre de lignes
+  /// modifiées (0 si id inconnu).
+  Future<int> updateUserPassword(int userId, String passwordHash, String salt) async {
+    final db = await database;
+    return db.update(
+      'users',
+      {'password_hash': passwordHash, 'salt': salt},
+      where: 'id = ?',
+      whereArgs: [userId],
+    );
+  }
+
   // ── card_scans ────────────────────────────────────────────────────────────
 
   /// Insère un nouveau scan de carte (CNI ou CHIFA) et retourne l'id généré.

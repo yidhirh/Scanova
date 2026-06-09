@@ -110,58 +110,66 @@ class AppDrawer extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             const _DrawerHeader(),
-            const SizedBox(height: 8),
-            _DrawerItem(
-              icon: Icons.home_outlined,
-              label: 'Accueil',
-              selected: current == 0,
-              onTap: () => _switchTab(context, 0),
-            ),
-            _DrawerItem(
-              icon: Icons.document_scanner_outlined,
-              label: 'Scanner',
-              selected: current == 1,
-              onTap: () => _switchTab(context, 1),
-            ),
-            _DrawerItem(
-              icon: Icons.people_outline,
-              label: 'Patients',
-              selected: current == 2,
-              onTap: () => _switchTab(context, 2),
-            ),
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              child: Divider(height: 1, color: AppColors.ink200),
-            ),
-            _DrawerItem(
-              icon: Icons.search,
-              label: 'Recherche avancée',
-              onTap: () => _openAdvancedSearch(context),
-            ),
-            // Réservés à l'administrateur (cf. UserRole.canManageUsers / canViewAudit).
-            if (AuthService.instance.canManageUsers)
-              _DrawerItem(
-                icon: Icons.manage_accounts_outlined,
-                label: 'Gestion des utilisateurs',
-                onTap: () => _openUserManagement(context),
+            // La liste des entrées défile si la hauteur disponible est trop
+            // courte (ex. compte admin = 2 entrées de plus) afin d'éviter le
+            // « bottom overflowed ».
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.only(top: 8),
+                children: [
+                  _DrawerItem(
+                    icon: Icons.home_outlined,
+                    label: 'Accueil',
+                    selected: current == 0,
+                    onTap: () => _switchTab(context, 0),
+                  ),
+                  _DrawerItem(
+                    icon: Icons.document_scanner_outlined,
+                    label: 'Scanner',
+                    selected: current == 1,
+                    onTap: () => _switchTab(context, 1),
+                  ),
+                  _DrawerItem(
+                    icon: Icons.people_outline,
+                    label: 'Patients',
+                    selected: current == 2,
+                    onTap: () => _switchTab(context, 2),
+                  ),
+                  const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    child: Divider(height: 1, color: AppColors.ink200),
+                  ),
+                  _DrawerItem(
+                    icon: Icons.search,
+                    label: 'Recherche avancée',
+                    onTap: () => _openAdvancedSearch(context),
+                  ),
+                  // Réservés à l'administrateur (cf. UserRole.canManageUsers / canViewAudit).
+                  if (AuthService.instance.canManageUsers)
+                    _DrawerItem(
+                      icon: Icons.manage_accounts_outlined,
+                      label: 'Gestion des utilisateurs',
+                      onTap: () => _openUserManagement(context),
+                    ),
+                  if (AuthService.instance.canViewAudit)
+                    _DrawerItem(
+                      icon: Icons.fact_check_outlined,
+                      label: "Journal d'audit",
+                      onTap: () => _openAuditLog(context),
+                    ),
+                  _DrawerItem(
+                    icon: Icons.info_outline,
+                    label: 'À propos',
+                    onTap: () => _openAbout(context),
+                  ),
+                  _DrawerItem(
+                    icon: Icons.logout,
+                    label: 'Déconnexion',
+                    onTap: () => _logout(context),
+                  ),
+                ],
               ),
-            if (AuthService.instance.canViewAudit)
-              _DrawerItem(
-                icon: Icons.fact_check_outlined,
-                label: "Journal d'audit",
-                onTap: () => _openAuditLog(context),
-              ),
-            _DrawerItem(
-              icon: Icons.info_outline,
-              label: 'À propos',
-              onTap: () => _openAbout(context),
             ),
-            _DrawerItem(
-              icon: Icons.logout,
-              label: 'Déconnexion',
-              onTap: () => _logout(context),
-            ),
-            const Spacer(),
             const Padding(
               padding: EdgeInsets.all(16),
               child: Text(
