@@ -118,6 +118,7 @@ class _PatientDossierScreenState extends State<PatientDossierScreen> {
   IconData _iconForType(String type) {
     switch (type.toLowerCase()) {
       case 'ordonnance':    return Icons.medical_services_outlined;
+      case 'ordonnance_numerique': return Icons.edit_note;
       case 'bilan':
       case 'analyse':       return Icons.science_outlined;
       case 'radio':
@@ -131,6 +132,7 @@ class _PatientDossierScreenState extends State<PatientDossierScreen> {
   String _labelForType(String type) {
     switch (type.toLowerCase()) {
       case 'ordonnance':    return 'Ordonnances';
+      case 'ordonnance_numerique': return 'Ordonnances numériques';
       case 'bilan':
       case 'analyse':       return 'Bilans biologiques';
       case 'radio':
@@ -144,7 +146,8 @@ class _PatientDossierScreenState extends State<PatientDossierScreen> {
 
   Color _colorForType(String type) {
     switch (type.toLowerCase()) {
-      case 'ordonnance':    return AppColors.docOrdonnance;
+      case 'ordonnance':
+      case 'ordonnance_numerique': return AppColors.docOrdonnance;
       case 'bilan':
       case 'analyse':       return AppColors.docBilan;
       case 'radio':
@@ -245,7 +248,7 @@ class _PatientDossierScreenState extends State<PatientDossierScreen> {
   /// Ordonne les types selon une priorité d'affichage stable, les types
   /// inattendus étant ajoutés à la fin par ordre alphabétique.
   List<String> _orderedTypes(Iterable<String> types) {
-    const order = ['ordonnance', 'bilan', 'radio', 'compte rendu', 'autre'];
+    const order = ['ordonnance', 'ordonnance_numerique', 'bilan', 'radio', 'compte rendu', 'autre'];
     final remaining = types.toSet();
     final result = [for (final t in order) if (remaining.remove(t)) t];
     result.addAll(remaining.toList()..sort());
@@ -392,7 +395,7 @@ class _PatientDossierScreenState extends State<PatientDossierScreen> {
         ),
         title: Text(doc.titre, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
         subtitle: Text(
-          '${_capitalize(doc.typeDocument)}  ·  ${_formatDate(doc.documentDate)}'
+          '${_capitalize(doc.typeDocument.replaceAll('_', ' '))}  ·  ${_formatDate(doc.documentDate)}'
           '${nbPages > 1 ? '  ·  $nbPages pages' : ''}',
           style: const TextStyle(fontSize: 13, color: AppColors.ink500),
         ),

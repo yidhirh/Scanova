@@ -16,6 +16,8 @@ import '../services/document_scanner_service.dart';
 import '../services/ocr_service.dart';
 import '../widgets/patient_picker_sheet.dart';
 import 'bilan_form_screen.dart';
+import 'ordonnance_form_screen.dart';
+import 'patient_dossier_screen.dart';
 
 class AddDocumentScreen extends StatefulWidget {
   /// Dossier patient cible. `null` quand l'écran est ouvert depuis la Home
@@ -179,6 +181,34 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
       final page = _pages.removeAt(oldIndex);
       _pages.insert(newIndex, page);
     });
+  }
+
+  /// Alternative sans scan (type « Ordonnance » uniquement) : ouvre le
+  /// formulaire de saisie d'une ordonnance numérique. Après enregistrement,
+  /// l'utilisateur est redirigé vers le dossier du patient : retour au dossier
+  /// appelant (flux dossier patient) ou remplacement de cet écran par le
+  /// dossier du patient choisi (flux Home).
+  Future<void> _createOrdonnanceNumerique() async {
+    final patientId = await Navigator.push<int>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => OrdonnanceFormScreen(
+          patientId: widget.patientId,
+          initialPatient: _selectedPatient,
+        ),
+      ),
+    );
+    if (patientId == null || !mounted) return;
+
+    if (widget.patientId != null) {
+      // Déjà ouvert depuis le dossier patient → on y retourne (rafraîchi).
+      Navigator.pop(context, true);
+    } else {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => PatientDossierScreen(patientId: patientId)),
+      );
+    }
   }
 
   /// Ouvre le sélecteur de dossier patient (flux Home). Retourne `true` si un
@@ -434,6 +464,12 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
             _buildPagesSection(),
             const SizedBox(height: 20),
             _buildTypeSelector(),
+            // Ordonnance : alternative sans scan — saisie directe d'une
+            // ordonnance numérique (complète l'OCR, ne le remplace pas).
+            if (_selectedType == 'ordonnance') ...[
+              const SizedBox(height: 12),
+              _buildOrdonnanceNumeriqueOption(),
+            ],
             const SizedBox(height: 16),
             // Le bilan est auto-nommé (« Bilan du … ») → on masque le titre,
             // seul champ qui n'a pas de sens pour ce type.
@@ -746,6 +782,53 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
           }).toList(),
         ),
       ],
+    );
+  }
+
+  /// Bannière « Créer une ordonnance numérique » : visible seulement quand le
+  /// type « Ordonnance » est sélectionné. Ouvre le formulaire de saisie directe.
+  Widget _buildOrdonnanceNumeriqueOption() {
+    return Material(
+      color: _primary.withValues(alpha: 0.06),
+      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: _isSaving ? null : _createOrdonnanceNumerique,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: _primary.withValues(alpha: 0.35)),
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.edit_note, color: _primary),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Créer une ordonnance numérique',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: _primary,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      'Saisir directement l\'ordonnance, sans scan',
+                      style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(Icons.chevron_right, color: _primary, size: 20),
+            ],
+          ),
+        ),
+      ),
     );
   }
 

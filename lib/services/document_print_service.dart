@@ -25,10 +25,14 @@ class PrintPage {
 /// rendu, autre) : le viewer fournit le titre, quelques lignes de métadonnées
 /// métier (type/date, ou date de prélèvement/labo pour un bilan) et les pages.
 class DocumentPrintService {
+  /// [bodyText] : corps de texte imprimé après l'en-tête, pour les documents
+  /// sans page scannée (ex. ordonnance numérique dont le contenu vit dans
+  /// `description`). Ignoré si vide.
   static Future<void> printDocument({
     required String title,
     List<String> metaLines = const [],
     required List<PrintPage> pages,
+    String? bodyText,
   }) async {
     final doc = pw.Document();
 
@@ -53,6 +57,8 @@ class DocumentPrintService {
         build: (context) => [
           _header(title, metaLines),
           pw.SizedBox(height: 12),
+          if (bodyText != null && bodyText.trim().isNotEmpty)
+            pw.Text(bodyText.trim(), style: const pw.TextStyle(fontSize: 11, lineSpacing: 3)),
           for (final p in pages) ..._pageBlock(p, images[p.number]),
         ],
       ),

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../database/database_helper.dart';
 import '../models/document_page.dart';
 import '../models/medical_document.dart';
+import '../models/ordonnance_numerique.dart';
 import '../services/audit_service.dart';
 import '../services/auth_service.dart';
 import '../services/document_print_service.dart';
@@ -41,6 +42,11 @@ class _DocumentViewerScreenState extends State<DocumentViewerScreen> {
 
   MedicalDocument get doc => widget.document;
 
+  /// Ordonnance saisie dans l'app (aucune image) : l'aperçu des pages est
+  /// masqué et `description` contient le contenu structuré de l'ordonnance.
+  bool get _isOrdonnanceNumerique =>
+      doc.typeDocument == OrdonnanceNumerique.typeDocument;
+
   // ── Helpers présentation ──────────────────────────────────────────────────
 
   String _formatDate(String? isoDate) {
@@ -55,10 +61,15 @@ class _DocumentViewerScreenState extends State<DocumentViewerScreen> {
     return s[0].toUpperCase() + s.substring(1);
   }
 
+  /// Libellé lisible du type ('ordonnance_numerique' → 'Ordonnance numerique').
+  String _typeLabel(String type) => _capitalize(type.replaceAll('_', ' '));
+
   IconData _iconForType(String type) {
     switch (type.toLowerCase()) {
       case 'ordonnance':
         return Icons.medical_services_outlined;
+      case 'ordonnance_numerique':
+        return Icons.edit_note;
       case 'bilan':
       case 'analyse':
         return Icons.science_outlined;
@@ -76,6 +87,7 @@ class _DocumentViewerScreenState extends State<DocumentViewerScreen> {
   Color _colorForType(String type) {
     switch (type.toLowerCase()) {
       case 'ordonnance':
+      case 'ordonnance_numerique':
         return Colors.blue;
       case 'bilan':
       case 'analyse':
@@ -100,16 +112,19 @@ class _DocumentViewerScreenState extends State<DocumentViewerScreen> {
       await DocumentPrintService.printDocument(
         title: doc.titre,
         metaLines: [
-          'Type : ${_capitalize(doc.typeDocument)}',
+          'Type : ${_typeLabel(doc.typeDocument)}',
           'Date du document : ${_formatDate(doc.documentDate)}',
         ],
         pages: printPages,
+        // Document sans page (ordonnance numérique) : le contenu vit dans
+        // `description`, on l'imprime comme corps de texte.
+        bodyText: printPages.isEmpty ? doc.description : null,
       );
       await AuditService.instance.logExport(
         entityType: 'document',
         entityId: doc.id,
         patientId: doc.patientId,
-        description: 'Export du document « ${doc.titre} » (${_capitalize(doc.typeDocument)})',
+        description: 'Export du document « ${doc.titre} » (${_typeLabel(doc.typeDocument)})',
       );
     } catch (e) {
       if (!mounted) return;
@@ -152,7 +167,7 @@ class _DocumentViewerScreenState extends State<DocumentViewerScreen> {
       entityType: 'document',
       entityId: doc.id,
       patientId: doc.patientId,
-      description: 'Suppression du document « ${doc.titre} » (${_capitalize(doc.typeDocument)})',
+      description: 'Suppression du document « ${doc.titre} » (${_typeLabel(doc.typeDocument)})',
     );
     if (mounted) Navigator.pop(context, true);
   }
@@ -197,8 +212,13 @@ class _DocumentViewerScreenState extends State<DocumentViewerScreen> {
         children: [
           _buildHeaderCard(typeColor),
           const SizedBox(height: 16),
-          _buildPagesSection(pages),
-          const SizedBox(height: 16),
+          // Ordonnance numérique : aucune image par construction → on masque
+          // l'aperçu des pages (sinon « Aucune image disponible » serait
+          // affiché à tort comme une anomalie).
+          if (!(_isOrdonnanceNumerique && pages.isEmpty)) ...[
+            _buildPagesSection(pages),
+            const SizedBox(height: 16),
+          ],
           _buildPageText(pages),
         ],
       ),
@@ -285,7 +305,7 @@ class _DocumentViewerScreenState extends State<DocumentViewerScreen> {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      _capitalize(doc.typeDocument),
+                      _typeLabel(doc.typeDocument),
                       style: TextStyle(color: typeColor, fontSize: 13),
                     ),
                   ],
@@ -451,7 +471,9 @@ class _DocumentViewerScreenState extends State<DocumentViewerScreen> {
         : ((pages.length <= 1 ? doc.description : null)?.trim() ?? '');
 
     final multi = pages.length > 1;
-    final label = multi ? 'Texte extrait (page ${_currentPage + 1})' : 'Texte extrait (OCR)';
+    final label = _isOrdonnanceNumerique
+        ? 'Contenu de l\'ordonnance'
+        : (multi ? 'Texte extrait (page ${_currentPage + 1})' : 'Texte extrait (OCR)');
 
     return Container(
       width: double.infinity,

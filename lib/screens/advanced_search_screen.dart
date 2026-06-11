@@ -170,7 +170,7 @@ class _AdvancedSearchScreenState extends State<AdvancedSearchScreen> {
   _Result _docResult(Patient p, MedicalDocument d, {bool ocrMatch = false}) {
     final date = _formatIso(d.documentDate);
     final parts = <String>[
-      _capitalize(d.typeDocument),
+      _capitalize(d.typeDocument.replaceAll('_', ' ')),
       '${p.nom} ${p.prenom}',
       if (date != '—') date,
       if (ocrMatch) 'texte OCR',
@@ -258,6 +258,8 @@ class _AdvancedSearchScreenState extends State<AdvancedSearchScreen> {
     switch (type.toLowerCase()) {
       case 'ordonnance':
         return Icons.medical_services_outlined;
+      case 'ordonnance_numerique':
+        return Icons.edit_note;
       case 'bilan':
       case 'analyse':
         return Icons.science_outlined;
@@ -275,6 +277,7 @@ class _AdvancedSearchScreenState extends State<AdvancedSearchScreen> {
   Color _colorForType(String type) {
     switch (type.toLowerCase()) {
       case 'ordonnance':
+      case 'ordonnance_numerique':
         return AppColors.docOrdonnance;
       case 'bilan':
       case 'analyse':

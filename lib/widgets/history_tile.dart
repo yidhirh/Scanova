@@ -24,6 +24,8 @@ import '../models/history_entry.dart';
       return (icon: Icons.science_outlined, color: const Color(0xFF16A34A));
     case 'ordonnance':
       return (icon: Icons.medical_services_outlined, color: const Color(0xFF2563EB));
+    case 'ordonnance_numerique':
+      return (icon: Icons.edit_note, color: const Color(0xFF2563EB));
     case 'radio':
     case 'radiographie':
       return (icon: Icons.image_outlined, color: const Color(0xFF9333EA));
