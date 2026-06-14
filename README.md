@@ -290,8 +290,8 @@ Le projet a été conduit selon la méthodologie **Scrum**, avec un suivi outill
 
 **Réalisation**
 
-- **Yidhir H.** — Backend, module OCR et base de données
-- **Binôme** — Interface utilisateur et conception graphique (Figma)
+- **Yidhir** — Backend, module OCR et base de données
+- **Mehdi** — Interface utilisateur et conception graphique (Figma)
 
 **Encadrement**
 
