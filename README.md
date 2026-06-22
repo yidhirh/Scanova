@@ -300,16 +300,6 @@ Le projet a été conduit selon la méthodologie **Scrum**, avec un suivi outill
 
 **Cadre académique** — Master 2 Informatique, Université Mouloud Mammeri de Tizi-Ouzou (UMMTO), réalisé dans le cadre d'un stage de fin d'études chez **Nexodia IT** (Tizi-Ouzou).
 
----
-
-## Licence
-
-Ce projet a été développé dans un **cadre académique** (Projet de Fin d'Études). Toute réutilisation est soumise à l'accord des auteurs et de l'établissement.
-
-> *Conseil : ajoute un fichier `LICENSE` à la racine du dépôt pour clarifier les conditions de réutilisation (par exemple MIT pour un usage libre, ou une mention « tous droits réservés » pour un usage restreint).*
-
----
-
 <div align="center">
 
 *Scanova — Numérisation intelligente des dossiers médicaux*
