@@ -2,7 +2,7 @@ name: Scanova CI/CD
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [ main, develop, yidhir ]
   pull_request:
     branches: [ main ]
 
